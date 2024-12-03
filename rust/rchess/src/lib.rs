@@ -7,6 +7,7 @@ mod piece;
 mod prng;
 mod square;
 mod statics;
+mod errors;
 use pyo3::prelude::*;
 
 #[pymodule]
@@ -34,8 +35,11 @@ mod _lib {
             format!("{}", self.board)
         }
 
-        fn push_uci(&mut self, uci: &str) -> bool {
-            self.board.push_uci(uci).is_ok()
+        fn push_uci(&mut self, uci: &str) -> PyResult<()> {
+            if let Err(err) = self.board.push_uci(uci) {
+                panic!("{}", err)
+            };
+            Ok(())
         }
 
         fn legal_moves(&mut self) -> Vec<String> {
