@@ -1,0 +1,6 @@
+**/target
+python/*.egg-info
+**/_lib*
+**/.idea
+**/.vscode
+**/Cargo.lock
