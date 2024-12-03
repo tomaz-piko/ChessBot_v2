@@ -4,3 +4,4 @@ python/*.egg-info
 **/.idea
 **/.vscode
 **/Cargo.lock
+**/__pycache__

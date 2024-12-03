@@ -1,10 +1,11 @@
-use std::ptr;
-use crate::bitboard::Bitboard;
+#![allow(static_mut_refs)]
 use crate::bitboard::masks::{BB_EMPTY, BB_FILES, BB_RANKS};
-use crate::board::{HFILE, RANK1, AFILE, RANK8};
+use crate::bitboard::Bitboard;
+use crate::board::{AFILE, HFILE, RANK1, RANK8};
 use crate::piece::Piece;
-use crate::square::{SQUARES};
-use crate::prng::PRNG;
+use crate::prng::Prng;
+use crate::square::SQUARES;
+use std::ptr;
 
 const SEEDS: [[u64; 8]; 2] = [
     [8977, 44_560, 54_343, 38_998, 5731, 95_205, 104_912, 17_020],
@@ -76,7 +77,10 @@ impl Magic {
 
     #[inline(always)]
     pub fn index(&self, blockers: Bitboard) -> usize {
-        let index = (blockers & self.mask).0.wrapping_mul(self.magic).wrapping_shr(self.shift);
+        let index = (blockers & self.mask)
+            .0
+            .wrapping_mul(self.magic)
+            .wrapping_shr(self.shift);
         index as usize
     }
 }
@@ -107,14 +111,15 @@ unsafe fn generate_magics(piece: Piece, magics: *mut Magic, attacks: *mut Bitboa
     let mut start = 0;
     let mut tmp_magics: Vec<TmpMagic> = vec![TmpMagic::default(); 64];
     for (sq_idx, sq) in SQUARES.iter().enumerate() {
-        let edges = ((BB_FILES[AFILE] | BB_FILES[HFILE]) & !BB_FILES[sq.file_idx()]) | ((BB_RANKS[RANK1] | BB_RANKS[RANK8]) & !BB_RANKS[sq.rank_idx()]);
+        let edges = ((BB_FILES[AFILE] | BB_FILES[HFILE]) & !BB_FILES[sq.file_idx()])
+            | ((BB_RANKS[RANK1] | BB_RANKS[RANK8]) & !BB_RANKS[sq.rank_idx()]);
         let mask = match piece {
             Piece::Bishop => Bitboard::calc_diag_attacks(*sq, Bitboard::default()) & !edges,
             Piece::Rook => Bitboard::calc_orth_attacks(*sq, Bitboard::default()) & !edges,
             _ => panic!("Invalid piece type"),
         };
         let shift: u32 = 64 - mask.pop_count();
-        let mut rng = PRNG::init(SEEDS[1][sq.rank_idx()]);
+        let mut rng = Prng::init(SEEDS[1][sq.rank_idx()]);
 
         let mut possible_blockers: Vec<Bitboard> = Vec::new();
         let mut blockers: Bitboard = Bitboard::default();
@@ -139,7 +144,7 @@ unsafe fn generate_magics(piece: Piece, magics: *mut Magic, attacks: *mut Bitboa
                     break 'magic_select;
                 }
             }
-            let mut tmp_attacks : Vec<Bitboard> = vec![Bitboard::default(); size];
+            let mut tmp_attacks: Vec<Bitboard> = vec![Bitboard::default(); size];
             let mut i = 0;
             while i < size {
                 let possible_moves = match piece {
@@ -151,8 +156,7 @@ unsafe fn generate_magics(piece: Piece, magics: *mut Magic, attacks: *mut Bitboa
                 if tmp_attacks[index] == BB_EMPTY {
                     *attacks.add(start + index) = possible_moves;
                     tmp_attacks[index] = possible_moves;
-                }
-                else if tmp_attacks[index] != possible_moves {
+                } else if tmp_attacks[index] != possible_moves {
                     break;
                 }
                 i += 1;
@@ -168,16 +172,21 @@ unsafe fn generate_magics(piece: Piece, magics: *mut Magic, attacks: *mut Bitboa
         start += size;
     }
     let mut size = 0;
-    for i in 0..64 {
-        let beginptr = attacks.add(size);
-        let magicptr: *mut Magic = magics.add(i);
-        let currmagic: Magic = Magic {
-            ptr: beginptr as usize,
-            mask: tmp_magics[i].mask,
-            magic: tmp_magics[i].magic,
-            shift: tmp_magics[i].shift,
-        };
-        ptr::copy::<Magic>(&currmagic, magicptr, 1);
-        size += tmp_magics[i].len;
-    }
+    //for i in 0..64 {
+    tmp_magics
+        .iter()
+        .enumerate()
+        .take(64)
+        .for_each(|(i, magic)| {
+            let beginptr = attacks.add(size);
+            let magicptr: *mut Magic = magics.add(i);
+            let currmagic: Magic = Magic {
+                ptr: beginptr as usize,
+                mask: magic.mask,
+                magic: magic.magic,
+                shift: magic.shift,
+            };
+            ptr::copy::<Magic>(&currmagic, magicptr, 1);
+            size += magic.len;
+        })
 }

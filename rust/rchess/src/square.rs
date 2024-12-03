@@ -113,7 +113,7 @@ impl Add<i8> for Square {
 
     fn add(self, rhs: i8) -> Self::Output {
         let idx = self as i8 + rhs;
-        assert!(idx >= 0 && idx < 64, "Invalid square index {}", idx);
+        assert!((0..64).contains(&idx), "Invalid square index {}", idx);
         SQUARES[idx as usize]
     }
 }
@@ -123,7 +123,7 @@ impl Sub<i8> for Square {
 
     fn sub(self, rhs: i8) -> Self::Output {
         let idx = self as i8 - rhs;
-        assert!(idx >= 0 && idx < 64, "Invalid square index {}", idx);
+        assert!((0..64).contains(&idx), "Invalid square index {}", idx);
         SQUARES[idx as usize]
     }
 }

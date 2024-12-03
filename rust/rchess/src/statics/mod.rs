@@ -1,15 +1,15 @@
-pub mod magics;
 mod btwn;
 mod lines;
+pub mod magics;
 mod pseudolegals;
 mod zobrist;
 
-use std::sync::Once;
 use crate::bitboard::Bitboard;
 use crate::board::CastlingRights;
 use crate::color::Color;
 use crate::piece::Piece;
 use crate::square::Square;
+use std::sync::Once;
 
 static INIT: Once = Once::new();
 
@@ -24,17 +24,11 @@ fn init_statics() {
     });
 }
 
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct Lookups {}
 
 unsafe impl Send for Lookups {}
 unsafe impl Sync for Lookups {}
-
-impl Default for Lookups {
-    fn default() -> Self {
-        Lookups {}
-    }
-}
 
 impl Lookups {
     pub fn new() -> Lookups {
