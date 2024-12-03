@@ -400,7 +400,7 @@ impl Board {
         board.castling_rights = CastlingRights::from(fen_parts[2]);
         board.ep_sq = match fen_parts[3] {
             "-" => None,
-            _ => Some(Square::from(fen_parts[3])),
+            _ => Some(Square::try_from(fen_parts[3]).unwrap()),
         };
         board.half_move_counter = fen_parts
             .get(4)
@@ -626,22 +626,45 @@ impl Board {
     }
 
     pub fn push_uci(&mut self, uci: &str) -> Result<(), MakeMoveError> {
+        let r#move = self.parse_uci(uci)?;
+        self.push(&r#move)
+    }
+
+    fn parse_uci(&self, uci: &str) -> Result<Move, MakeMoveError> {
         if ![4, 5].contains(&uci.len()) {
             return Err(MakeMoveError::InvalidUci(format!(
-                "Invalid length of UCI string: {}",
-                uci
+                "Invalid length: {} (expected 4 or 5, got {})",
+                uci,
+                uci.len()
             )));
         }
-        let from = Square::from(uci.get(0..2).unwrap());
-        let to: Square = Square::from(uci.get(2..4).unwrap());
+        let from_str = uci.get(0..2).unwrap();
+        let from = match Square::try_from(from_str) {
+            Ok(square) => square,
+            Err(err) => {
+                return Err(MakeMoveError::InvalidUci(format!(
+                    "Invalid from: {} ({})",
+                    from_str, err
+                )))
+            }
+        };
+        let to_str = uci.get(2..4).unwrap();
+        let to = match Square::try_from(to_str) {
+            Ok(square) => square,
+            Err(err) => {
+                return Err(MakeMoveError::InvalidUci(format!(
+                    "Invalid to: {} ({})",
+                    to_str, err
+                )))
+            }
+        };
         let promo: Option<char> = if uci.len() == 5 {
             Some(uci.chars().nth(4).unwrap())
         } else {
             None
         };
         let flag = self.get_flag_from_uci(from, to, promo)?;
-        let r#move = Move::new(from, to, flag);
-        self.push(&r#move)
+        Ok(Move::new(from, to, flag))
     }
 
     fn is_checkmate(&mut self) -> bool {
