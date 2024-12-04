@@ -10,6 +10,7 @@ use std::collections::VecDeque;
 use std::fmt::{Display, Formatter};
 use std::ops::{BitAnd, Index};
 use std::str::FromStr;
+use crate::errors::MakeMoveError;
 
 pub enum Rank {
     RANK1 = 0,
@@ -365,54 +366,6 @@ impl Board {
         }
     }
 
-    pub fn from_fen(fen: &str) -> Board {
-        let mut board = Board::default();
-        let fen_parts: Vec<&str> = fen.split_whitespace().collect();
-        let pieces_setup = fen_parts[0];
-        let rows: Vec<&str> = pieces_setup.split("/").collect();
-        let mut square_idx: usize = 0;
-        for row in rows.iter() {
-            for c in row.chars() {
-                if c.is_ascii_digit() {
-                    let num: usize = c.to_digit(10).unwrap() as usize;
-                    square_idx += num;
-                    continue;
-                }
-                let color = if c.is_lowercase() { BLACK } else { WHITE };
-                match Piece::from_str(c.to_string().as_str()) {
-                    Ok(piece) => {
-                        board.put_piece_at(SQUARES_REV[square_idx], piece, color);
-                        square_idx += 1;
-                        board.piece_count += 1;
-                    }
-                    Err(_) => {
-                        println!("Error");
-                    }
-                }
-            }
-        }
-        board.turn = match fen_parts[1] {
-            "w" => WHITE,
-            "b" => BLACK,
-            _ => WHITE,
-        };
-        board.castling_rights = CastlingRights::from(fen_parts[2]);
-        board.ep_sq = match fen_parts[3] {
-            "-" => None,
-            _ => Some(Square::from(fen_parts[3])),
-        };
-        board.half_move_counter = fen_parts
-            .get(4)
-            .and_then(|x| x.parse::<u8>().ok())
-            .unwrap_or(0);
-        let full_move_counter = fen_parts
-            .get(5)
-            .and_then(|x| x.parse::<u16>().ok())
-            .unwrap_or(1);
-        board.ply = 2 * full_move_counter - if board.turn == BLACK { 1 } else { 2 };
-        board
-    }
-
     pub fn fen(&self) -> String {
         let mut fen = String::new();
         for rank in (0..8).rev() {
@@ -619,22 +572,167 @@ impl Board {
         self.outcome
     }
 
-    pub fn push(&mut self, r#move: &Move) -> Result<(), ()> {
-        self.make_move(r#move);
+    pub fn push(&mut self, r#move: &Move) -> Result<(), MakeMoveError> {
+        self.make_move(r#move)?;
         Ok(())
     }
 
-    pub fn push_uci(&mut self, uci: &str) -> Result<(), ()> {
-        let from = Square::from(uci.get(0..2).unwrap());
-        let to: Square = Square::from(uci.get(2..4).unwrap());
+    pub fn push_uci(&mut self, uci: &str) -> Result<(), MakeMoveError> {
+        let r#move = self.try_parse_uci(uci)?;
+        self.push(&r#move)
+    }
+}
+
+// // // // // // // // // // // // //
+//                                  //
+//       Board private logic        //
+//                                  //
+// // // // // // // // // // // // //
+impl Board {
+    fn from_fen(fen: &str) -> Board {
+        let mut board = Board::default();
+        let fen_parts: Vec<&str> = fen.split_whitespace().collect();
+        let pieces_setup = fen_parts[0];
+        let rows: Vec<&str> = pieces_setup.split("/").collect();
+        let mut square_idx: usize = 0;
+        for row in rows.iter() {
+            for c in row.chars() {
+                if c.is_ascii_digit() {
+                    let num: usize = c.to_digit(10).unwrap() as usize;
+                    square_idx += num;
+                    continue;
+                }
+                let color = if c.is_lowercase() { BLACK } else { WHITE };
+                match Piece::from_str(c.to_string().as_str()) {
+                    Ok(piece) => {
+                        board.put_piece_at(SQUARES_REV[square_idx], piece, color);
+                        square_idx += 1;
+                        board.piece_count += 1;
+                    }
+                    Err(_) => {
+                        println!("Error");
+                    }
+                }
+            }
+        }
+        board.turn = match fen_parts[1] {
+            "w" => WHITE,
+            "b" => BLACK,
+            _ => WHITE,
+        };
+        board.castling_rights = CastlingRights::from(fen_parts[2]);
+        board.ep_sq = match fen_parts[3] {
+            "-" => None,
+            _ => Some(Square::try_from(fen_parts[3]).unwrap()),
+        };
+        board.half_move_counter = fen_parts
+            .get(4)
+            .and_then(|x| x.parse::<u8>().ok())
+            .unwrap_or(0);
+        let full_move_counter = fen_parts
+            .get(5)
+            .and_then(|x| x.parse::<u16>().ok())
+            .unwrap_or(1);
+        board.ply = 2 * full_move_counter - if board.turn == BLACK { 1 } else { 2 };
+        board
+    }
+
+    fn try_parse_uci(&self, uci: &str) -> Result<Move, MakeMoveError> {
+        if ![4, 5].contains(&uci.len()) {
+            return Err(MakeMoveError::InvalidUci(format!(
+                "Invalid length: {} (expected 4 or 5, got {})",
+                uci,
+                uci.len()
+            )));
+        }
+        let from_str = uci.get(0..2).unwrap();
+        let from = match Square::try_from(from_str) {
+            Ok(square) => square,
+            Err(err) => {
+                return Err(MakeMoveError::InvalidUci(format!(
+                    "Invalid from: {} ({})",
+                    from_str, err
+                )))
+            }
+        };
+        let to_str = uci.get(2..4).unwrap();
+        let to = match Square::try_from(to_str) {
+            Ok(square) => square,
+            Err(err) => {
+                return Err(MakeMoveError::InvalidUci(format!(
+                    "Invalid to: {} ({})",
+                    to_str, err
+                )))
+            }
+        };
         let promo: Option<char> = if uci.len() == 5 {
             Some(uci.chars().nth(4).unwrap())
         } else {
             None
         };
-        let flag = self.get_flag_from_uci(from, to, promo);
-        let r#move = Move::new(from, to, flag);
-        self.push(&r#move)
+        let flag = self.get_flag_from_uci(from, to, promo)?;
+        Ok(Move::new(from, to, flag))
+    }
+
+    fn get_flag_from_uci(&self, from: Square, to: Square, promo: Option<char>) -> Result<Flags, MakeMoveError> {
+        let moving_piece = match self.piece_at(from) {
+            Some(piece) => piece,
+            None => {
+                return Err(MakeMoveError::InvalidMove(format!("No piece to move at {}", from)));
+            }
+        };
+        let captured_piece: Option<Piece> = self.piece_at(to);
+        if moving_piece == Piece::King {
+            if (from == Square::E1 && to == Square::G1) || (from == Square::E8 && to == Square::G8)
+            {
+                return Ok(Flags::KingSideCastle);
+            } else if (from == Square::E1 && to == Square::C1)
+                || (from == Square::E8 && to == Square::C8)
+            {
+                return Ok(Flags::QueenSideCastle);
+            }
+        }
+        if moving_piece == Piece::Pawn {
+            if let Some(sq) = self.ep_sq {
+                if sq == to {
+                    return Ok(Flags::EpCapture);
+                }
+            }
+            if self.turn == WHITE && from.rank_idx() == 1 {
+                if from + NORTH2X * self.turn == to {
+                    return Ok(Flags::DoublePawnPush);
+                }
+            } else if self.turn == BLACK && from.rank_idx() == 6 {
+                if from + NORTH2X * self.turn == to {
+                    return Ok(Flags::DoublePawnPush);
+                }
+            }
+        }
+        if captured_piece.is_some() {
+            if let Some(p) = promo {
+                match p {
+                    'q' => return Ok(Flags::QueenPromotionCapture),
+                    'r' => return Ok(Flags::RookPromotionCapture),
+                    'b' => return Ok(Flags::BishopPromotionCapture),
+                    'n' => return Ok(Flags::KnightPromotionCapture),
+                    _ => return Err(MakeMoveError::InvalidUci(format!("Invalid promotion piece: {}", p))),
+                }
+            }
+            else {
+                return Ok(Flags::Capture);
+            }
+        } else if to.rank_idx() == 0 || to.rank_idx() == 7 {
+            if let Some(p) = promo {
+                match p {
+                    'q' => return Ok(Flags::QueenPromotion),
+                    'r' => return Ok(Flags::RookPromotion),
+                    'b' => return Ok(Flags::BishopPromotion),
+                    'n' => return Ok(Flags::KnightPromotion),
+                    _ => return Err(MakeMoveError::InvalidUci(format!("Invalid promotion piece: {}", p))),
+                }
+            }
+        }
+        Ok(Flags::QuietMove)
     }
 
     fn is_checkmate(&mut self) -> bool {
@@ -733,14 +831,26 @@ impl Board {
         }
         false
     }
-}
 
-// // // // // // // // // // // // //
-//                                  //
-//  Board state manipulation logic  //
-//                                  //
-// // // // // // // // // // // // //
-impl Board {
+    #[inline(always)]
+    fn move_piece(&mut self, from: Square, to: Square, color: Color) -> Result<(), MakeMoveError> {
+        let piece = self.clear_piece_at(from, color)?;
+        self.put_piece_at(to, piece, color);
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn move_piece_and_capture(&mut self, from: Square, to: Square, color: Color) -> Result<(), MakeMoveError> {
+        // Check if there is a piece to capture before clearing the capturing piece
+        if self.piece_at(to).is_none() {
+            return Err(MakeMoveError::InvalidMove(format!("No piece to capture at {}", to)));
+        };
+        let moved_piece = self.clear_piece_at(from, color)?;
+        self.clear_piece_at(to, !color)?; // Should never return error because of the if statement above
+        self.put_piece_at(to, moved_piece, color);
+        Ok(())
+    }
+    
     #[inline(always)]
     fn put_piece_at(&mut self, square: Square, piece: Piece, color: Color) {
         self.pieces_list[square as usize] = Some(piece);
@@ -750,26 +860,17 @@ impl Board {
     }
 
     #[inline(always)]
-    fn clear_piece_at(&mut self, square: Square, color: Color) -> Piece {
-        let piece = self.pieces_list[square as usize].unwrap();
+    fn clear_piece_at(&mut self, square: Square, color: Color) -> Result<Piece, MakeMoveError> {
+        // Return error if there is no piece to clear
+        let piece = match self.pieces_list[square as usize] {
+            Some(piece) => piece,
+            None => return Err(MakeMoveError::InvalidMove(format!("No piece to clear from {}", square))),
+        };
         self.pieces_list[square as usize] = None;
         self.pieces_bb[piece] &= !BB_SQUARES[square as usize];
         self.occupancy_bb[color] &= !BB_SQUARES[square as usize];
         self.zobrist_hash ^= self.lookups.zobrist_piece(piece, square);
-        piece
-    }
-
-    #[inline(always)]
-    fn move_piece(&mut self, from: Square, to: Square, color: Color) {
-        let piece = self.clear_piece_at(from, color);
-        self.put_piece_at(to, piece, color);
-    }
-
-    #[inline(always)]
-    fn move_piece_and_capture(&mut self, from: Square, to: Square, color: Color) {
-        let moved_piece = self.clear_piece_at(from, color);
-        self.clear_piece_at(to, !color);
-        self.put_piece_at(to, moved_piece, color);
+        Ok(piece)
     }
 
     #[inline(always)]
@@ -1200,14 +1301,13 @@ impl Board {
         (moves, is_check)
     }
 
-    fn make_move(&mut self, m: &Move) {
-        // Save current state to history
-        self.add_history_plane(self.to_history_plane());
-        self.zobrist_history.push(self.zobrist_hash);
+    fn make_move(&mut self, m: &Move) -> Result<(), MakeMoveError> {
+        let history_plane = self.to_history_plane();
+        let zobrist_hash = self.zobrist_hash;
         let mut ep_sq = None;
         match m.flags() {
             Flags::QuietMove => {
-                self.move_piece(m.sq_from(), m.sq_to(), self.turn);
+                self.move_piece(m.sq_from(), m.sq_to(), self.turn)?;
                 if self.piece_at(m.sq_to()).unwrap() == Piece::Pawn {
                     self.half_move_counter = 0;
                 } else {
@@ -1215,7 +1315,7 @@ impl Board {
                 }
             }
             Flags::DoublePawnPush => {
-                self.move_piece(m.sq_from(), m.sq_to(), self.turn);
+                self.move_piece(m.sq_from(), m.sq_to(), self.turn)?;
                 // Set en-passant square behind the pawn
                 let sq = m.sq_to() + (SOUTH * self.turn);
                 self.zobrist_hash ^= self.lookups.zobrist_ep(sq);
@@ -1223,77 +1323,81 @@ impl Board {
                 self.half_move_counter = 0;
             }
             Flags::Capture => {
-                self.move_piece_and_capture(m.sq_from(), m.sq_to(), self.turn);
+                self.move_piece_and_capture(m.sq_from(), m.sq_to(), self.turn)?;
                 self.piece_count -= 1;
                 self.half_move_counter = 0;
             }
             Flags::EpCapture => {
-                self.move_piece(m.sq_from(), m.sq_to(), self.turn);
-                self.clear_piece_at(m.sq_to() + (SOUTH * self.turn), !self.turn);
+                self.move_piece(m.sq_from(), m.sq_to(), self.turn)?;
+                self.clear_piece_at(m.sq_to() + (SOUTH * self.turn), !self.turn)?;
                 self.piece_count -= 1;
                 self.half_move_counter = 0;
             }
             Flags::KingSideCastle => {
-                self.move_piece(Square::E1 & self.turn, Square::G1 & self.turn, self.turn);
-                self.move_piece(Square::H1 & self.turn, Square::F1 & self.turn, self.turn);
+                self.move_piece(Square::E1 & self.turn, Square::G1 & self.turn, self.turn)?;
+                self.move_piece(Square::H1 & self.turn, Square::F1 & self.turn, self.turn)?;
                 self.castling_rights.remove_both_rights(self.turn);
                 self.half_move_counter += 1;
             }
             Flags::QueenSideCastle => {
-                self.move_piece(Square::E1 & self.turn, Square::C1 & self.turn, self.turn);
-                self.move_piece(Square::A1 & self.turn, Square::D1 & self.turn, self.turn);
+                self.move_piece(Square::E1 & self.turn, Square::C1 & self.turn, self.turn)?;
+                self.move_piece(Square::A1 & self.turn, Square::D1 & self.turn, self.turn)?;
                 self.castling_rights.remove_both_rights(self.turn);
                 self.half_move_counter += 1;
             }
             Flags::KnightPromotion => {
-                self.clear_piece_at(m.sq_from(), self.turn);
+                self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Knight, self.turn);
                 self.half_move_counter = 0;
             }
             Flags::BishopPromotion => {
-                self.clear_piece_at(m.sq_from(), self.turn);
+                self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Bishop, self.turn);
                 self.half_move_counter = 0;
             }
             Flags::RookPromotion => {
-                self.clear_piece_at(m.sq_from(), self.turn);
+                self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Rook, self.turn);
                 self.half_move_counter = 0;
             }
             Flags::QueenPromotion => {
-                self.clear_piece_at(m.sq_from(), self.turn);
+                self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Queen, self.turn);
                 self.half_move_counter = 0;
             }
             Flags::KnightPromotionCapture => {
-                self.clear_piece_at(m.sq_from(), self.turn);
-                self.clear_piece_at(m.sq_to(), !self.turn);
+                self.clear_piece_at(m.sq_from(), self.turn)?;
+                self.clear_piece_at(m.sq_to(), !self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Knight, self.turn);
                 self.piece_count -= 1;
                 self.half_move_counter = 0;
             }
             Flags::BishopPromotionCapture => {
-                self.clear_piece_at(m.sq_from(), self.turn);
-                self.clear_piece_at(m.sq_to(), !self.turn);
+                self.clear_piece_at(m.sq_from(), self.turn)?;
+                self.clear_piece_at(m.sq_to(), !self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Bishop, self.turn);
                 self.piece_count -= 1;
                 self.half_move_counter = 0;
             }
             Flags::RookPromotionCapture => {
-                self.clear_piece_at(m.sq_from(), self.turn);
-                self.clear_piece_at(m.sq_to(), !self.turn);
+                self.clear_piece_at(m.sq_from(), self.turn)?;
+                self.clear_piece_at(m.sq_to(), !self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Rook, self.turn);
                 self.piece_count -= 1;
                 self.half_move_counter = 0;
             }
             Flags::QueenPromotionCapture => {
-                self.clear_piece_at(m.sq_from(), self.turn);
-                self.clear_piece_at(m.sq_to(), !self.turn);
+                self.clear_piece_at(m.sq_from(), self.turn)?;
+                self.clear_piece_at(m.sq_to(), !self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Queen, self.turn);
                 self.piece_count -= 1;
                 self.half_move_counter = 0;
             }
         };
+        // Save previous zobrist hash and history plane
+        self.add_history_plane(history_plane);
+        self.zobrist_history.push(zobrist_hash);
+        // Update board info
         self.maybe_update_castling_rights(m);
         self.zobrist_hash ^= self.lookups.zobrist_castling(self.castling_rights);
         self.ep_sq = ep_sq.and_then(|sq| Some(sq)); // Resets en-passant square if the move was not a double pawn push
@@ -1303,6 +1407,7 @@ impl Board {
         self.turn = !self.turn;
         self.ply += 1;
         self.clear_cache();
+        Ok(())
     }
 
     fn clear_cache(&mut self) {
@@ -1376,66 +1481,6 @@ impl Board {
             occupancy: self.occupancy_bb,
             repetition_count: self.count_repetitions(3),
         }
-    }
-
-    fn get_flag_from_uci(&self, from: Square, to: Square, promo: Option<char>) -> Flags {
-        let moving_piece = match self.piece_at(from) {
-            Some(piece) => piece,
-            None => {
-                panic!("No piece at square {}", from);
-            }
-        };
-        let captured_piece: Option<Piece> = self.piece_at(to);
-        if moving_piece == Piece::King {
-            if (from == Square::E1 && to == Square::G1) || (from == Square::E8 && to == Square::G8)
-            {
-                return Flags::KingSideCastle;
-            } else if (from == Square::E1 && to == Square::C1)
-                || (from == Square::E8 && to == Square::C8)
-            {
-                return Flags::QueenSideCastle;
-            }
-        }
-        if moving_piece == Piece::Pawn {
-            if let Some(sq) = self.ep_sq {
-                if sq == to {
-                    return Flags::EpCapture;
-                }
-            } /*else if from + NORTH2X * self.turn == to {
-                return Flags::DoublePawnPush;
-            }*/
-            if self.turn == WHITE && from.rank_idx() == 1 {
-                if from + NORTH2X * self.turn == to {
-                    return Flags::DoublePawnPush;
-                }
-            } else if self.turn == BLACK && from.rank_idx() == 6 {
-                if from + NORTH2X * self.turn == to {
-                    return Flags::DoublePawnPush;
-                }
-            }
-        }
-        if captured_piece.is_some() {
-            if promo.is_some() {
-                match promo.unwrap() {
-                    'q' => return Flags::QueenPromotionCapture,
-                    'r' => return Flags::RookPromotionCapture,
-                    'b' => return Flags::BishopPromotionCapture,
-                    'n' => return Flags::KnightPromotionCapture,
-                    _ => panic!(),
-                }
-            } else {
-                return Flags::Capture;
-            }
-        } else if (to.rank_idx() == 0 || to.rank_idx() == 7) && promo.is_some() {
-            match promo.unwrap() {
-                'q' => return Flags::QueenPromotion,
-                'r' => return Flags::RookPromotion,
-                'b' => return Flags::BishopPromotion,
-                'n' => return Flags::KnightPromotion,
-                _ => panic!(),
-            }
-        }
-        Flags::QuietMove
     }
 }
 

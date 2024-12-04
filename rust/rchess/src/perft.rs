@@ -34,7 +34,9 @@ pub fn perft_bulk(board: &mut Board, depth: u32) -> u64 {
 
     for m in board.legal_moves() {
         let mut board2 = board.clone();
-        board2.push(&m);
+        if let Err(err) = board2.push(&m) {
+            panic!("{}", err)
+        };
         nodes += perft_bulk(&mut board2, depth - 1);
     }
     nodes
@@ -50,7 +52,9 @@ pub fn perft_bulk_uci(board: &mut Board, depth: u32) -> u64 {
 
     for m in board.legal_moves() {
         let mut board2 = board.clone();
-        board2.push_uci(&m.uci());
+        if let Err(err) = board2.push_uci(&m.uci()) {
+            panic!("{}", err)
+        };
         nodes += crate::perft::perft_bulk(&mut board2, depth - 1);
     }
     nodes
@@ -61,7 +65,9 @@ pub fn perft_divide(board: &mut Board, depth: u32, uci: bool) -> u64 {
     let mut nodes = 0;
     for mv in moves.iter() {
         let mut board = board.clone();
-        board.push(mv);
+        if let Err(err) = board.push(mv) {
+            panic!("{}", err)
+        };
         let count = perft_bulk(&mut board, depth - 1);
         if uci {
             println!("   {}: {},", mv.uci(), count);
