@@ -366,54 +366,6 @@ impl Board {
         }
     }
 
-    pub fn from_fen(fen: &str) -> Board {
-        let mut board = Board::default();
-        let fen_parts: Vec<&str> = fen.split_whitespace().collect();
-        let pieces_setup = fen_parts[0];
-        let rows: Vec<&str> = pieces_setup.split("/").collect();
-        let mut square_idx: usize = 0;
-        for row in rows.iter() {
-            for c in row.chars() {
-                if c.is_ascii_digit() {
-                    let num: usize = c.to_digit(10).unwrap() as usize;
-                    square_idx += num;
-                    continue;
-                }
-                let color = if c.is_lowercase() { BLACK } else { WHITE };
-                match Piece::from_str(c.to_string().as_str()) {
-                    Ok(piece) => {
-                        board.put_piece_at(SQUARES_REV[square_idx], piece, color);
-                        square_idx += 1;
-                        board.piece_count += 1;
-                    }
-                    Err(_) => {
-                        println!("Error");
-                    }
-                }
-            }
-        }
-        board.turn = match fen_parts[1] {
-            "w" => WHITE,
-            "b" => BLACK,
-            _ => WHITE,
-        };
-        board.castling_rights = CastlingRights::from(fen_parts[2]);
-        board.ep_sq = match fen_parts[3] {
-            "-" => None,
-            _ => Some(Square::try_from(fen_parts[3]).unwrap()),
-        };
-        board.half_move_counter = fen_parts
-            .get(4)
-            .and_then(|x| x.parse::<u8>().ok())
-            .unwrap_or(0);
-        let full_move_counter = fen_parts
-            .get(5)
-            .and_then(|x| x.parse::<u16>().ok())
-            .unwrap_or(1);
-        board.ply = 2 * full_move_counter - if board.turn == BLACK { 1 } else { 2 };
-        board
-    }
-
     pub fn fen(&self) -> String {
         let mut fen = String::new();
         for rank in (0..8).rev() {
@@ -626,11 +578,66 @@ impl Board {
     }
 
     pub fn push_uci(&mut self, uci: &str) -> Result<(), MakeMoveError> {
-        let r#move = self.parse_uci(uci)?;
+        let r#move = self.try_parse_uci(uci)?;
         self.push(&r#move)
     }
+}
 
-    fn parse_uci(&self, uci: &str) -> Result<Move, MakeMoveError> {
+// // // // // // // // // // // // //
+//                                  //
+//       Board private logic        //
+//                                  //
+// // // // // // // // // // // // //
+impl Board {
+    fn from_fen(fen: &str) -> Board {
+        let mut board = Board::default();
+        let fen_parts: Vec<&str> = fen.split_whitespace().collect();
+        let pieces_setup = fen_parts[0];
+        let rows: Vec<&str> = pieces_setup.split("/").collect();
+        let mut square_idx: usize = 0;
+        for row in rows.iter() {
+            for c in row.chars() {
+                if c.is_ascii_digit() {
+                    let num: usize = c.to_digit(10).unwrap() as usize;
+                    square_idx += num;
+                    continue;
+                }
+                let color = if c.is_lowercase() { BLACK } else { WHITE };
+                match Piece::from_str(c.to_string().as_str()) {
+                    Ok(piece) => {
+                        board.put_piece_at(SQUARES_REV[square_idx], piece, color);
+                        square_idx += 1;
+                        board.piece_count += 1;
+                    }
+                    Err(_) => {
+                        println!("Error");
+                    }
+                }
+            }
+        }
+        board.turn = match fen_parts[1] {
+            "w" => WHITE,
+            "b" => BLACK,
+            _ => WHITE,
+        };
+        board.castling_rights = CastlingRights::from(fen_parts[2]);
+        board.ep_sq = match fen_parts[3] {
+            "-" => None,
+            _ => Some(Square::try_from(fen_parts[3]).unwrap()),
+        };
+        board.half_move_counter = fen_parts
+            .get(4)
+            .and_then(|x| x.parse::<u8>().ok())
+            .unwrap_or(0);
+        let full_move_counter = fen_parts
+            .get(5)
+            .and_then(|x| x.parse::<u16>().ok())
+            .unwrap_or(1);
+        board.ply = 2 * full_move_counter - if board.turn == BLACK { 1 } else { 2 };
+        board
+    }
+
+    fn try_parse_uci(&self, uci: &str) -> Result<Move, MakeMoveError> {
         if ![4, 5].contains(&uci.len()) {
             return Err(MakeMoveError::InvalidUci(format!(
                 "Invalid length: {} (expected 4 or 5, got {})",
@@ -665,6 +672,67 @@ impl Board {
         };
         let flag = self.get_flag_from_uci(from, to, promo)?;
         Ok(Move::new(from, to, flag))
+    }
+
+    fn get_flag_from_uci(&self, from: Square, to: Square, promo: Option<char>) -> Result<Flags, MakeMoveError> {
+        let moving_piece = match self.piece_at(from) {
+            Some(piece) => piece,
+            None => {
+                return Err(MakeMoveError::InvalidMove(format!("No piece to move at {}", from)));
+            }
+        };
+        let captured_piece: Option<Piece> = self.piece_at(to);
+        if moving_piece == Piece::King {
+            if (from == Square::E1 && to == Square::G1) || (from == Square::E8 && to == Square::G8)
+            {
+                return Ok(Flags::KingSideCastle);
+            } else if (from == Square::E1 && to == Square::C1)
+                || (from == Square::E8 && to == Square::C8)
+            {
+                return Ok(Flags::QueenSideCastle);
+            }
+        }
+        if moving_piece == Piece::Pawn {
+            if let Some(sq) = self.ep_sq {
+                if sq == to {
+                    return Ok(Flags::EpCapture);
+                }
+            }
+            if self.turn == WHITE && from.rank_idx() == 1 {
+                if from + NORTH2X * self.turn == to {
+                    return Ok(Flags::DoublePawnPush);
+                }
+            } else if self.turn == BLACK && from.rank_idx() == 6 {
+                if from + NORTH2X * self.turn == to {
+                    return Ok(Flags::DoublePawnPush);
+                }
+            }
+        }
+        if captured_piece.is_some() {
+            if let Some(p) = promo {
+                match p {
+                    'q' => return Ok(Flags::QueenPromotionCapture),
+                    'r' => return Ok(Flags::RookPromotionCapture),
+                    'b' => return Ok(Flags::BishopPromotionCapture),
+                    'n' => return Ok(Flags::KnightPromotionCapture),
+                    _ => return Err(MakeMoveError::InvalidUci(format!("Invalid promotion piece: {}", p))),
+                }
+            }
+            else {
+                return Ok(Flags::Capture);
+            }
+        } else if to.rank_idx() == 0 || to.rank_idx() == 7 {
+            if let Some(p) = promo {
+                match p {
+                    'q' => return Ok(Flags::QueenPromotion),
+                    'r' => return Ok(Flags::RookPromotion),
+                    'b' => return Ok(Flags::BishopPromotion),
+                    'n' => return Ok(Flags::KnightPromotion),
+                    _ => return Err(MakeMoveError::InvalidUci(format!("Invalid promotion piece: {}", p))),
+                }
+            }
+        }
+        Ok(Flags::QuietMove)
     }
 
     fn is_checkmate(&mut self) -> bool {
@@ -763,14 +831,7 @@ impl Board {
         }
         false
     }
-}
 
-// // // // // // // // // // // // //
-//                                  //
-//  Board state manipulation logic  //
-//                                  //
-// // // // // // // // // // // // //
-impl Board {
     #[inline(always)]
     fn move_piece(&mut self, from: Square, to: Square, color: Color) -> Result<(), MakeMoveError> {
         let piece = self.clear_piece_at(from, color)?;
@@ -1420,67 +1481,6 @@ impl Board {
             occupancy: self.occupancy_bb,
             repetition_count: self.count_repetitions(3),
         }
-    }
-
-    fn get_flag_from_uci(&self, from: Square, to: Square, promo: Option<char>) -> Result<Flags, MakeMoveError> {
-        let moving_piece = match self.piece_at(from) {
-            Some(piece) => piece,
-            None => {
-                return Err(MakeMoveError::InvalidMove(format!("No piece to move at {}", from)));
-            }
-        };
-        let captured_piece: Option<Piece> = self.piece_at(to);
-        if moving_piece == Piece::King {
-            if (from == Square::E1 && to == Square::G1) || (from == Square::E8 && to == Square::G8)
-            {
-                return Ok(Flags::KingSideCastle);
-            } else if (from == Square::E1 && to == Square::C1)
-                || (from == Square::E8 && to == Square::C8)
-            {
-                return Ok(Flags::QueenSideCastle);
-            }
-        }
-        if moving_piece == Piece::Pawn {
-            if let Some(sq) = self.ep_sq {
-                if sq == to {
-                    return Ok(Flags::EpCapture);
-                }
-            }
-            if self.turn == WHITE && from.rank_idx() == 1 {
-                if from + NORTH2X * self.turn == to {
-                    return Ok(Flags::DoublePawnPush);
-                }
-            } else if self.turn == BLACK && from.rank_idx() == 6 {
-                if from + NORTH2X * self.turn == to {
-                    return Ok(Flags::DoublePawnPush);
-                }
-            }
-        }
-        if captured_piece.is_some() {
-            if let Some(p) = promo {
-                match p {
-                    'q' => return Ok(Flags::QueenPromotionCapture),
-                    'r' => return Ok(Flags::RookPromotionCapture),
-                    'b' => return Ok(Flags::BishopPromotionCapture),
-                    'n' => return Ok(Flags::KnightPromotionCapture),
-                    _ => return Err(MakeMoveError::InvalidUci(format!("Invalid promotion piece: {}", p))),
-                }
-            }
-            else {
-                return Ok(Flags::Capture);
-            }
-        } else if to.rank_idx() == 0 || to.rank_idx() == 7 {
-            if let Some(p) = promo {
-                match p {
-                    'q' => return Ok(Flags::QueenPromotion),
-                    'r' => return Ok(Flags::RookPromotion),
-                    'b' => return Ok(Flags::BishopPromotion),
-                    'n' => return Ok(Flags::KnightPromotion),
-                    _ => return Err(MakeMoveError::InvalidUci(format!("Invalid promotion piece: {}", p))),
-                }
-            }
-        }
-        Ok(Flags::QuietMove)
     }
 }
 
