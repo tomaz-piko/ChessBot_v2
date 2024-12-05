@@ -6,7 +6,7 @@ use crate::types::square::{Square, SQUARES_REV};
 pub mod masks;
 mod ops;
 
-use crate::board::{AFILE, HFILE};
+use crate::types::ranks_and_files::{AFILE, HFILE};
 use crate::types::color::Color;
 use masks::*;
 
@@ -298,8 +298,7 @@ impl Debug for Bitboard {
 #[cfg(test)]
 mod bitboard_tests {
     use super::*;
-    use crate::board::File::{BFILE, GFILE};
-    use crate::board::Rank::{RANK2, RANK3, RANK6, RANK7};
+    use crate::types::ranks_and_files::{BFILE, GFILE, HFILE, RANK2, RANK3, RANK6, RANK7};
     use crate::types::color::{BLACK, WHITE};
 
     #[test]
