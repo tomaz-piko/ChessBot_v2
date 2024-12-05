@@ -2,9 +2,9 @@
 use crate::bitboard::masks::{BB_EMPTY, BB_FILES, BB_RANKS};
 use crate::bitboard::Bitboard;
 use crate::board::{AFILE, HFILE, RANK1, RANK8};
-use crate::piece::Piece;
-use crate::prng::Prng;
-use crate::square::SQUARES;
+use crate::types::piece::Piece;
+use crate::statics::prng::Prng;
+use crate::types::square::SQUARES;
 use std::ptr;
 
 const SEEDS: [[u64; 8]; 2] = [

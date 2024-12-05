@@ -1,5 +1,5 @@
 use crate::bitboard::Bitboard;
-use crate::square::Square;
+use crate::types::square::Square;
 
 pub const BB_EMPTY: Bitboard = Bitboard(0);
 pub const BB_FULL: Bitboard = Bitboard(0xFFFFFFFFFFFFFFFF);

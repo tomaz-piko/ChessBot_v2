@@ -1,5 +1,5 @@
 use crate::bitboard::Bitboard;
-use crate::color::Color;
+use crate::types::color::Color;
 use std::fmt::Display;
 use std::ops::{Add, BitAnd, Index, Sub};
 

@@ -1,13 +1,13 @@
 use std::fmt::Debug;
 use std::ops::{BitAnd, Mul};
 
-use crate::square::{Square, SQUARES_REV};
+use crate::types::square::{Square, SQUARES_REV};
 
 pub mod masks;
 mod ops;
 
 use crate::board::{AFILE, HFILE};
-use crate::color::Color;
+use crate::types::color::Color;
 use masks::*;
 
 #[derive(Debug, PartialEq)]
@@ -300,7 +300,7 @@ mod bitboard_tests {
     use super::*;
     use crate::board::File::{BFILE, GFILE};
     use crate::board::Rank::{RANK2, RANK3, RANK6, RANK7};
-    use crate::color::{BLACK, WHITE};
+    use crate::types::color::{BLACK, WHITE};
 
     #[test]
     fn shift_north() {

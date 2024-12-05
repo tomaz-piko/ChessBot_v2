@@ -1,6 +1,6 @@
 use std::ops::{Index, IndexMut, Not};
 use crate::bitboard::Bitboard;
-use crate::square::Square;
+use crate::types::square::Square;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Color {

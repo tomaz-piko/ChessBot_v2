@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 use std::ops::{Index, IndexMut};
-use std::str::FromStr;
 use crate::bitboard::Bitboard;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -13,18 +12,18 @@ pub enum Piece {
     King = 5,
 }
 
-impl FromStr for Piece {
-    type Err = ();
+impl TryFrom<&str> for Piece {
+    type Error = &'static str;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value.to_lowercase().as_str() {
             "p" => Ok(Piece::Pawn),
             "n" => Ok(Piece::Knight),
             "b" => Ok(Piece::Bishop),
             "r" => Ok(Piece::Rook),
             "q" => Ok(Piece::Queen),
             "k" => Ok(Piece::King),
-            _ => Err(()),
+            _ => Err("Invalid piece string"),
         }
     }
 }

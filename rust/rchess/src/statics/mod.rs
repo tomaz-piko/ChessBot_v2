@@ -3,12 +3,13 @@ mod lines;
 pub mod magics;
 mod pseudolegals;
 mod zobrist;
+mod prng;
 
 use crate::bitboard::Bitboard;
 use crate::board::CastlingRights;
-use crate::color::Color;
-use crate::piece::Piece;
-use crate::square::Square;
+use crate::types::color::Color;
+use crate::types::piece::Piece;
+use crate::types::square::Square;
 use std::sync::Once;
 
 static INIT: Once = Once::new();

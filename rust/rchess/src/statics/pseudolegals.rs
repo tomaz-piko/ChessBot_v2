@@ -1,8 +1,8 @@
 use crate::bitboard::Bitboard;
 use crate::bitboard::masks::{BB_EMPTY, BB_KNIGHT_ATTACKS, BB_KING_ATTACKS, BB_PAWN_ATTACKS};
-use crate::color::Color;
-use crate::piece::{Piece, BISHOP, KING, KNIGHT, QUEEN, ROOK};
-use crate::square::{Square, SQUARES};
+use crate::types::color::Color;
+use crate::types::piece::{Piece, BISHOP, KING, KNIGHT, QUEEN, ROOK};
+use crate::types::square::{Square, SQUARES};
 
 static mut PAWN_ATTACKS: [[Bitboard; 64]; 2] = [[BB_EMPTY; 64]; 2];
 static mut PIECE_PSEUDO_LEGALS_ATTACKS: [[Bitboard; 64]; 5] = [[BB_EMPTY; 64]; 5];

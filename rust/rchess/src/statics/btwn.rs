@@ -1,6 +1,6 @@
 use crate::bitboard::Bitboard;
 use crate::bitboard::masks::BB_EMPTY;
-use crate::square::{Square, SQUARES};
+use crate::types::square::{Square, SQUARES};
 
 static mut SQUARES_BETWEEN: [[Bitboard; 64]; 64] = [[BB_EMPTY; 64]; 64];
 

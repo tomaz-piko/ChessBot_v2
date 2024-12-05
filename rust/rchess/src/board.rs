@@ -1,16 +1,15 @@
 #![allow(unused_variables)]
 use crate::bitboard::masks::*;
 use crate::bitboard::{Bitboard, NORTH, NORTH2X, NORTH_EAST, NORTH_WEST, SOUTH};
-use crate::color::{Color, BLACK, WHITE};
-use crate::piece::{Piece, PIECES};
-use crate::r#move::{Flags, Move};
-use crate::square::{Square, SQUARES, SQUARES_REV};
+use crate::types::color::{Color, BLACK, WHITE};
+use crate::types::piece::{Piece, PIECES};
+use crate::types::square::{Square, SQUARES, SQUARES_REV};
 use crate::statics::Lookups;
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter};
 use std::ops::{BitAnd, Index};
-use std::str::FromStr;
-use crate::errors::MakeMoveError;
+use crate::errors::BoardError;
+use crate::types::r#move::{MoveFlags, Move};
 
 pub enum Rank {
     RANK1 = 0,
@@ -360,9 +359,13 @@ impl Clone for Board {
 
 impl Board {
     pub fn new(fen: Option<&str>) -> Board {
-        match fen {
-            Some(fen) => Self::from_fen(fen),
-            None => Self::from_fen(STARTING_POSITION),
+        let fen = match fen {
+           Some(fen) => fen,
+           None => STARTING_POSITION,
+        };
+        match Self::try_from_fen(fen) {
+            Ok(board) => board,
+            Err(err) => panic!("{}", err),
         }
     }
 
@@ -572,12 +575,12 @@ impl Board {
         self.outcome
     }
 
-    pub fn push(&mut self, r#move: &Move) -> Result<(), MakeMoveError> {
+    pub fn push(&mut self, r#move: &Move) -> Result<(), BoardError> {
         self.make_move(r#move)?;
         Ok(())
     }
 
-    pub fn push_uci(&mut self, uci: &str) -> Result<(), MakeMoveError> {
+    pub fn push_uci(&mut self, uci: &str) -> Result<(), BoardError> {
         let r#move = self.try_parse_uci(uci)?;
         self.push(&r#move)
     }
@@ -589,7 +592,7 @@ impl Board {
 //                                  //
 // // // // // // // // // // // // //
 impl Board {
-    fn from_fen(fen: &str) -> Board {
+    fn try_from_fen(fen: &str) -> Result<Board, BoardError> {
         let mut board = Board::default();
         let fen_parts: Vec<&str> = fen.split_whitespace().collect();
         let pieces_setup = fen_parts[0];
@@ -603,14 +606,14 @@ impl Board {
                     continue;
                 }
                 let color = if c.is_lowercase() { BLACK } else { WHITE };
-                match Piece::from_str(c.to_string().as_str()) {
+                match Piece::try_from(c.to_string().as_str()) {
                     Ok(piece) => {
                         board.put_piece_at(SQUARES_REV[square_idx], piece, color);
                         square_idx += 1;
                         board.piece_count += 1;
                     }
-                    Err(_) => {
-                        println!("Error");
+                    Err(err) => {
+                        return Err(BoardError::InvalidFen(fen.to_string(), format!("{}: {}", err, c)));
                     }
                 }
             }
@@ -618,12 +621,19 @@ impl Board {
         board.turn = match fen_parts[1] {
             "w" => WHITE,
             "b" => BLACK,
-            _ => WHITE,
+            _ => return Err(BoardError::InvalidFen(fen.to_string(), format!("Invalid turn: {}", fen_parts[1]))),
         };
         board.castling_rights = CastlingRights::from(fen_parts[2]);
         board.ep_sq = match fen_parts[3] {
             "-" => None,
-            _ => Some(Square::try_from(fen_parts[3]).unwrap()),
+            //_ => Some(Square::try_from(fen_parts[3]).unwrap()),
+            _ => {
+                let sq = Square::try_from(fen_parts[3]);
+                match sq {
+                    Ok(sq) => Some(sq),
+                    Err(err) => return Err(BoardError::InvalidFen(fen.to_string(), format!("Invalid ep square: {}", err))),
+                }
+            }
         };
         board.half_move_counter = fen_parts
             .get(4)
@@ -634,12 +644,12 @@ impl Board {
             .and_then(|x| x.parse::<u16>().ok())
             .unwrap_or(1);
         board.ply = 2 * full_move_counter - if board.turn == BLACK { 1 } else { 2 };
-        board
+        Ok(board)
     }
 
-    fn try_parse_uci(&self, uci: &str) -> Result<Move, MakeMoveError> {
+    fn try_parse_uci(&self, uci: &str) -> Result<Move, BoardError> {
         if ![4, 5].contains(&uci.len()) {
-            return Err(MakeMoveError::InvalidUci(format!(
+            return Err(BoardError::InvalidUci(format!(
                 "Invalid length: {} (expected 4 or 5, got {})",
                 uci,
                 uci.len()
@@ -649,7 +659,7 @@ impl Board {
         let from = match Square::try_from(from_str) {
             Ok(square) => square,
             Err(err) => {
-                return Err(MakeMoveError::InvalidUci(format!(
+                return Err(BoardError::InvalidUci(format!(
                     "Invalid from: {} ({})",
                     from_str, err
                 )))
@@ -659,7 +669,7 @@ impl Board {
         let to = match Square::try_from(to_str) {
             Ok(square) => square,
             Err(err) => {
-                return Err(MakeMoveError::InvalidUci(format!(
+                return Err(BoardError::InvalidUci(format!(
                     "Invalid to: {} ({})",
                     to_str, err
                 )))
@@ -674,65 +684,65 @@ impl Board {
         Ok(Move::new(from, to, flag))
     }
 
-    fn get_flag_from_uci(&self, from: Square, to: Square, promo: Option<char>) -> Result<Flags, MakeMoveError> {
+    fn get_flag_from_uci(&self, from: Square, to: Square, promo: Option<char>) -> Result<MoveFlags, BoardError> {
         let moving_piece = match self.piece_at(from) {
             Some(piece) => piece,
             None => {
-                return Err(MakeMoveError::InvalidMove(format!("No piece to move at {}", from)));
+                return Err(BoardError::InvalidMove(format!("No piece to move at {}", from)));
             }
         };
         let captured_piece: Option<Piece> = self.piece_at(to);
         if moving_piece == Piece::King {
             if (from == Square::E1 && to == Square::G1) || (from == Square::E8 && to == Square::G8)
             {
-                return Ok(Flags::KingSideCastle);
+                return Ok(MoveFlags::KingSideCastle);
             } else if (from == Square::E1 && to == Square::C1)
                 || (from == Square::E8 && to == Square::C8)
             {
-                return Ok(Flags::QueenSideCastle);
+                return Ok(MoveFlags::QueenSideCastle);
             }
         }
         if moving_piece == Piece::Pawn {
             if let Some(sq) = self.ep_sq {
                 if sq == to {
-                    return Ok(Flags::EpCapture);
+                    return Ok(MoveFlags::EpCapture);
                 }
             }
             if self.turn == WHITE && from.rank_idx() == 1 {
                 if from + NORTH2X * self.turn == to {
-                    return Ok(Flags::DoublePawnPush);
+                    return Ok(MoveFlags::DoublePawnPush);
                 }
             } else if self.turn == BLACK && from.rank_idx() == 6 {
                 if from + NORTH2X * self.turn == to {
-                    return Ok(Flags::DoublePawnPush);
+                    return Ok(MoveFlags::DoublePawnPush);
                 }
             }
         }
         if captured_piece.is_some() {
             if let Some(p) = promo {
                 match p {
-                    'q' => return Ok(Flags::QueenPromotionCapture),
-                    'r' => return Ok(Flags::RookPromotionCapture),
-                    'b' => return Ok(Flags::BishopPromotionCapture),
-                    'n' => return Ok(Flags::KnightPromotionCapture),
-                    _ => return Err(MakeMoveError::InvalidUci(format!("Invalid promotion piece: {}", p))),
+                    'q' => return Ok(MoveFlags::QueenPromotionCapture),
+                    'r' => return Ok(MoveFlags::RookPromotionCapture),
+                    'b' => return Ok(MoveFlags::BishopPromotionCapture),
+                    'n' => return Ok(MoveFlags::KnightPromotionCapture),
+                    _ => return Err(BoardError::InvalidUci(format!("Invalid promotion piece: {}", p))),
                 }
             }
             else {
-                return Ok(Flags::Capture);
+                return Ok(MoveFlags::Capture);
             }
         } else if to.rank_idx() == 0 || to.rank_idx() == 7 {
             if let Some(p) = promo {
                 match p {
-                    'q' => return Ok(Flags::QueenPromotion),
-                    'r' => return Ok(Flags::RookPromotion),
-                    'b' => return Ok(Flags::BishopPromotion),
-                    'n' => return Ok(Flags::KnightPromotion),
-                    _ => return Err(MakeMoveError::InvalidUci(format!("Invalid promotion piece: {}", p))),
+                    'q' => return Ok(MoveFlags::QueenPromotion),
+                    'r' => return Ok(MoveFlags::RookPromotion),
+                    'b' => return Ok(MoveFlags::BishopPromotion),
+                    'n' => return Ok(MoveFlags::KnightPromotion),
+                    _ => return Err(BoardError::InvalidUci(format!("Invalid promotion piece: {}", p))),
                 }
             }
         }
-        Ok(Flags::QuietMove)
+        Ok(MoveFlags::QuietMove)
     }
 
     fn is_checkmate(&mut self) -> bool {
@@ -833,17 +843,17 @@ impl Board {
     }
 
     #[inline(always)]
-    fn move_piece(&mut self, from: Square, to: Square, color: Color) -> Result<(), MakeMoveError> {
+    fn move_piece(&mut self, from: Square, to: Square, color: Color) -> Result<(), BoardError> {
         let piece = self.clear_piece_at(from, color)?;
         self.put_piece_at(to, piece, color);
         Ok(())
     }
 
     #[inline(always)]
-    fn move_piece_and_capture(&mut self, from: Square, to: Square, color: Color) -> Result<(), MakeMoveError> {
+    fn move_piece_and_capture(&mut self, from: Square, to: Square, color: Color) -> Result<(), BoardError> {
         // Check if there is a piece to capture before clearing the capturing piece
         if self.piece_at(to).is_none() {
-            return Err(MakeMoveError::InvalidMove(format!("No piece to capture at {}", to)));
+            return Err(BoardError::InvalidMove(format!("No piece to capture at {}", to)));
         };
         let moved_piece = self.clear_piece_at(from, color)?;
         self.clear_piece_at(to, !color)?; // Should never return error because of the if statement above
@@ -860,11 +870,11 @@ impl Board {
     }
 
     #[inline(always)]
-    fn clear_piece_at(&mut self, square: Square, color: Color) -> Result<Piece, MakeMoveError> {
+    fn clear_piece_at(&mut self, square: Square, color: Color) -> Result<Piece, BoardError> {
         // Return error if there is no piece to clear
         let piece = match self.pieces_list[square as usize] {
             Some(piece) => piece,
-            None => return Err(MakeMoveError::InvalidMove(format!("No piece to clear from {}", square))),
+            None => return Err(BoardError::InvalidMove(format!("No piece to clear from {}", square))),
         };
         self.pieces_list[square as usize] = None;
         self.pieces_bb[piece] &= !BB_SQUARES[square as usize];
@@ -991,10 +1001,10 @@ impl Board {
         // All king generate_moves
         let king_moves = self.piece_pseudo_legal(player_king_square, Piece::King) & !danger_squares;
         for sq in king_moves & opponent_pieces {
-            moves.push(Move::new(player_king_square, sq, Flags::Capture));
+            moves.push(Move::new(player_king_square, sq, MoveFlags::Capture));
         }
         for sq in king_moves & !occupancy {
-            moves.push(Move::new(player_king_square, sq, Flags::QuietMove));
+            moves.push(Move::new(player_king_square, sq, MoveFlags::QuietMove));
         }
 
         // All pawns and knights giving check to players king
@@ -1043,7 +1053,7 @@ impl Board {
                             & self.pieces_bb(Piece::Pawn, player)
                             & not_pinned_pieces;
                         for sq in pawn_attacks {
-                            moves.push(Move::new(sq, ep_sq, Flags::EpCapture));
+                            moves.push(Move::new(sq, ep_sq, MoveFlags::EpCapture));
                         }
                     };
                 };
@@ -1061,7 +1071,7 @@ impl Board {
                         & self.pieces_bb(Piece::Queen, player);
                 attackers &= not_pinned_pieces;
                 for sq in attackers {
-                    moves.push(Move::new(sq, checker_square, Flags::Capture));
+                    moves.push(Move::new(sq, checker_square, MoveFlags::Capture));
                 }
                 return (moves, is_check);
             }
@@ -1087,13 +1097,13 @@ impl Board {
                         BB_RANKS[player_king_square.rank_idx()],
                     ) & opponent_orth_sliders;
                     if attacks == BB_EMPTY {
-                        moves.push(Move::new(sq, ep_sq, Flags::EpCapture));
+                        moves.push(Move::new(sq, ep_sq, MoveFlags::EpCapture));
                     }
                 }
                 // Pinned pawns can still move in the direction of the pin
                 let tmp = pawns_mask & pinned_pieces & self.line_through(player_king_square, ep_sq);
                 for from in tmp {
-                    moves.push(Move::new(from, ep_sq, Flags::EpCapture));
+                    moves.push(Move::new(from, ep_sq, MoveFlags::EpCapture));
                 }
             }
 
@@ -1104,7 +1114,7 @@ impl Board {
                 moves.push(Move::new(
                     Square::E1 & player,
                     Square::G1 & player,
-                    Flags::KingSideCastle,
+                    MoveFlags::KingSideCastle,
                 ));
             }
 
@@ -1116,7 +1126,7 @@ impl Board {
                 moves.push(Move::new(
                     Square::E1 & player,
                     Square::C1 & player,
-                    Flags::QueenSideCastle,
+                    MoveFlags::QueenSideCastle,
                 ));
             }
 
@@ -1126,10 +1136,10 @@ impl Board {
                 let diag_attacks = self.single_bishop_attacks(from, occupancy)
                     & self.line_through(player_king_square, from);
                 for to in diag_attacks & quiet_mask {
-                    moves.push(Move::new(from, to, Flags::QuietMove));
+                    moves.push(Move::new(from, to, MoveFlags::QuietMove));
                 }
                 for to in diag_attacks & capture_mask {
-                    moves.push(Move::new(from, to, Flags::Capture));
+                    moves.push(Move::new(from, to, MoveFlags::Capture));
                 }
             }
             let tmp = pinned_pieces & player_orth_sliders;
@@ -1137,10 +1147,10 @@ impl Board {
                 let orth_attacks = self.single_rook_attacks(from, occupancy)
                     & self.line_through(player_king_square, from);
                 for to in orth_attacks & quiet_mask {
-                    moves.push(Move::new(from, to, Flags::QuietMove));
+                    moves.push(Move::new(from, to, MoveFlags::QuietMove));
                 }
                 for to in orth_attacks & capture_mask {
-                    moves.push(Move::new(from, to, Flags::Capture));
+                    moves.push(Move::new(from, to, MoveFlags::Capture));
                 }
             }
 
@@ -1152,16 +1162,16 @@ impl Board {
                 if sq.rank_idx() == (RANK7 & player) as usize {
                     let attacks = self.pawn_pseudo_legal(sq, player) & capture_mask & pin_mask;
                     for to in attacks {
-                        moves.push(Move::new(sq, to, Flags::KnightPromotionCapture));
-                        moves.push(Move::new(sq, to, Flags::BishopPromotionCapture));
-                        moves.push(Move::new(sq, to, Flags::RookPromotionCapture));
-                        moves.push(Move::new(sq, to, Flags::QueenPromotionCapture));
+                        moves.push(Move::new(sq, to, MoveFlags::KnightPromotionCapture));
+                        moves.push(Move::new(sq, to, MoveFlags::BishopPromotionCapture));
+                        moves.push(Move::new(sq, to, MoveFlags::RookPromotionCapture));
+                        moves.push(Move::new(sq, to, MoveFlags::QueenPromotionCapture));
                     }
                 } else {
                     // Pinned pawns capturing other pieces_bb
                     let attacks = self.pawn_pseudo_legal(sq, player) & opponent_pieces & pin_mask;
                     for to in attacks {
-                        moves.push(Move::new(sq, to, Flags::Capture));
+                        moves.push(Move::new(sq, to, MoveFlags::Capture));
                     }
                     // Pinned pawns moving forward one square
                     let single_pushes =
@@ -1170,10 +1180,10 @@ impl Board {
                         Bitboard::shift(single_pushes & BB_RANKS[RANK3 & player], NORTH & player)
                             & !occupancy; // & pin_mask;
                     for to in single_pushes {
-                        moves.push(Move::new(sq, to, Flags::QuietMove));
+                        moves.push(Move::new(sq, to, MoveFlags::QuietMove));
                     }
                     for to in double_pushes {
-                        moves.push(Move::new(sq, to, Flags::DoublePawnPush));
+                        moves.push(Move::new(sq, to, MoveFlags::DoublePawnPush));
                     }
                 }
             }
@@ -1184,10 +1194,10 @@ impl Board {
         for from in tmp {
             let attacks = self.single_knight_attacks(from) & !player_pieces;
             for to in attacks & capture_mask {
-                moves.push(Move::new(from, to, Flags::Capture));
+                moves.push(Move::new(from, to, MoveFlags::Capture));
             }
             for to in attacks & quiet_mask {
-                moves.push(Move::new(from, to, Flags::QuietMove));
+                moves.push(Move::new(from, to, MoveFlags::QuietMove));
             }
         }
 
@@ -1196,10 +1206,10 @@ impl Board {
         for from in tmp {
             let attacks = self.single_bishop_attacks(from, occupancy) & !player_pieces;
             for to in attacks & capture_mask {
-                moves.push(Move::new(from, to, Flags::Capture));
+                moves.push(Move::new(from, to, MoveFlags::Capture));
             }
             for to in attacks & quiet_mask {
-                moves.push(Move::new(from, to, Flags::QuietMove));
+                moves.push(Move::new(from, to, MoveFlags::QuietMove));
             }
         }
 
@@ -1208,10 +1218,10 @@ impl Board {
         for from in tmp {
             let attacks = self.single_rook_attacks(from, occupancy) & !player_pieces;
             for to in attacks & capture_mask {
-                moves.push(Move::new(from, to, Flags::Capture));
+                moves.push(Move::new(from, to, MoveFlags::Capture));
             }
             for to in attacks & quiet_mask {
-                moves.push(Move::new(from, to, Flags::QuietMove));
+                moves.push(Move::new(from, to, MoveFlags::QuietMove));
             }
         }
 
@@ -1226,19 +1236,19 @@ impl Board {
         single_pushes &= quiet_mask;
 
         for sq in single_pushes {
-            moves.push(Move::new(sq - NORTH * player, sq, Flags::QuietMove));
+            moves.push(Move::new(sq - NORTH * player, sq, MoveFlags::QuietMove));
         }
         for sq in double_pushes {
-            moves.push(Move::new(sq - NORTH2X * player, sq, Flags::DoublePawnPush));
+            moves.push(Move::new(sq - NORTH2X * player, sq, MoveFlags::DoublePawnPush));
         }
 
         // Pawn captures
         // tmp still contains positions of non-pinned pawns
         for sq in Bitboard::shift(tmp, NORTH_WEST & player) & capture_mask {
-            moves.push(Move::new(sq - NORTH_WEST * player, sq, Flags::Capture));
+            moves.push(Move::new(sq - NORTH_WEST * player, sq, MoveFlags::Capture));
         }
         for sq in Bitboard::shift(tmp, NORTH_EAST & player) & capture_mask {
-            moves.push(Move::new(sq - NORTH_EAST * player, sq, Flags::Capture));
+            moves.push(Move::new(sq - NORTH_EAST * player, sq, MoveFlags::Capture));
         }
 
         // Pawn promotions
@@ -1247,66 +1257,66 @@ impl Board {
         if tmp != BB_EMPTY {
             // Quiet promotions
             for sq in Bitboard::shift(tmp, NORTH & player) & quiet_mask {
-                moves.push(Move::new(sq - NORTH * player, sq, Flags::KnightPromotion));
-                moves.push(Move::new(sq - NORTH * player, sq, Flags::BishopPromotion));
-                moves.push(Move::new(sq - NORTH * player, sq, Flags::RookPromotion));
-                moves.push(Move::new(sq - NORTH * player, sq, Flags::QueenPromotion));
+                moves.push(Move::new(sq - NORTH * player, sq, MoveFlags::KnightPromotion));
+                moves.push(Move::new(sq - NORTH * player, sq, MoveFlags::BishopPromotion));
+                moves.push(Move::new(sq - NORTH * player, sq, MoveFlags::RookPromotion));
+                moves.push(Move::new(sq - NORTH * player, sq, MoveFlags::QueenPromotion));
             }
             // Capturing promotions
             for sq in Bitboard::shift(tmp, NORTH_WEST & player) & capture_mask {
                 moves.push(Move::new(
                     sq - NORTH_WEST * player,
                     sq,
-                    Flags::KnightPromotionCapture,
+                    MoveFlags::KnightPromotionCapture,
                 ));
                 moves.push(Move::new(
                     sq - NORTH_WEST * player,
                     sq,
-                    Flags::BishopPromotionCapture,
+                    MoveFlags::BishopPromotionCapture,
                 ));
                 moves.push(Move::new(
                     sq - NORTH_WEST * player,
                     sq,
-                    Flags::RookPromotionCapture,
+                    MoveFlags::RookPromotionCapture,
                 ));
                 moves.push(Move::new(
                     sq - NORTH_WEST * player,
                     sq,
-                    Flags::QueenPromotionCapture,
+                    MoveFlags::QueenPromotionCapture,
                 ));
             }
             for sq in Bitboard::shift(tmp, NORTH_EAST & player) & capture_mask {
                 moves.push(Move::new(
                     sq - NORTH_EAST * player,
                     sq,
-                    Flags::KnightPromotionCapture,
+                    MoveFlags::KnightPromotionCapture,
                 ));
                 moves.push(Move::new(
                     sq - NORTH_EAST * player,
                     sq,
-                    Flags::BishopPromotionCapture,
+                    MoveFlags::BishopPromotionCapture,
                 ));
                 moves.push(Move::new(
                     sq - NORTH_EAST * player,
                     sq,
-                    Flags::RookPromotionCapture,
+                    MoveFlags::RookPromotionCapture,
                 ));
                 moves.push(Move::new(
                     sq - NORTH_EAST * player,
                     sq,
-                    Flags::QueenPromotionCapture,
+                    MoveFlags::QueenPromotionCapture,
                 ));
             }
         }
         (moves, is_check)
     }
 
-    fn make_move(&mut self, m: &Move) -> Result<(), MakeMoveError> {
+    fn make_move(&mut self, m: &Move) -> Result<(), BoardError> {
         let history_plane = self.to_history_plane();
         let zobrist_hash = self.zobrist_hash;
         let mut ep_sq = None;
         match m.flags() {
-            Flags::QuietMove => {
+            MoveFlags::QuietMove => {
                 self.move_piece(m.sq_from(), m.sq_to(), self.turn)?;
                 if self.piece_at(m.sq_to()).unwrap() == Piece::Pawn {
                     self.half_move_counter = 0;
@@ -1314,7 +1324,7 @@ impl Board {
                     self.half_move_counter += 1;
                 }
             }
-            Flags::DoublePawnPush => {
+            MoveFlags::DoublePawnPush => {
                 self.move_piece(m.sq_from(), m.sq_to(), self.turn)?;
                 // Set en-passant square behind the pawn
                 let sq = m.sq_to() + (SOUTH * self.turn);
@@ -1322,71 +1332,71 @@ impl Board {
                 ep_sq = Some(sq);
                 self.half_move_counter = 0;
             }
-            Flags::Capture => {
+            MoveFlags::Capture => {
                 self.move_piece_and_capture(m.sq_from(), m.sq_to(), self.turn)?;
                 self.piece_count -= 1;
                 self.half_move_counter = 0;
             }
-            Flags::EpCapture => {
+            MoveFlags::EpCapture => {
                 self.move_piece(m.sq_from(), m.sq_to(), self.turn)?;
                 self.clear_piece_at(m.sq_to() + (SOUTH * self.turn), !self.turn)?;
                 self.piece_count -= 1;
                 self.half_move_counter = 0;
             }
-            Flags::KingSideCastle => {
+            MoveFlags::KingSideCastle => {
                 self.move_piece(Square::E1 & self.turn, Square::G1 & self.turn, self.turn)?;
                 self.move_piece(Square::H1 & self.turn, Square::F1 & self.turn, self.turn)?;
                 self.castling_rights.remove_both_rights(self.turn);
                 self.half_move_counter += 1;
             }
-            Flags::QueenSideCastle => {
+            MoveFlags::QueenSideCastle => {
                 self.move_piece(Square::E1 & self.turn, Square::C1 & self.turn, self.turn)?;
                 self.move_piece(Square::A1 & self.turn, Square::D1 & self.turn, self.turn)?;
                 self.castling_rights.remove_both_rights(self.turn);
                 self.half_move_counter += 1;
             }
-            Flags::KnightPromotion => {
+            MoveFlags::KnightPromotion => {
                 self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Knight, self.turn);
                 self.half_move_counter = 0;
             }
-            Flags::BishopPromotion => {
+            MoveFlags::BishopPromotion => {
                 self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Bishop, self.turn);
                 self.half_move_counter = 0;
             }
-            Flags::RookPromotion => {
+            MoveFlags::RookPromotion => {
                 self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Rook, self.turn);
                 self.half_move_counter = 0;
             }
-            Flags::QueenPromotion => {
+            MoveFlags::QueenPromotion => {
                 self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Queen, self.turn);
                 self.half_move_counter = 0;
             }
-            Flags::KnightPromotionCapture => {
+            MoveFlags::KnightPromotionCapture => {
                 self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.clear_piece_at(m.sq_to(), !self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Knight, self.turn);
                 self.piece_count -= 1;
                 self.half_move_counter = 0;
             }
-            Flags::BishopPromotionCapture => {
+            MoveFlags::BishopPromotionCapture => {
                 self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.clear_piece_at(m.sq_to(), !self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Bishop, self.turn);
                 self.piece_count -= 1;
                 self.half_move_counter = 0;
             }
-            Flags::RookPromotionCapture => {
+            MoveFlags::RookPromotionCapture => {
                 self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.clear_piece_at(m.sq_to(), !self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Rook, self.turn);
                 self.piece_count -= 1;
                 self.half_move_counter = 0;
             }
-            Flags::QueenPromotionCapture => {
+            MoveFlags::QueenPromotionCapture => {
                 self.clear_piece_at(m.sq_from(), self.turn)?;
                 self.clear_piece_at(m.sq_to(), !self.turn)?;
                 self.put_piece_at(m.sq_to(), Piece::Queen, self.turn);
@@ -1421,10 +1431,10 @@ impl Board {
             return;
         }
         match m.flags() {
-            Flags::KingSideCastle
-            | Flags::QueenSideCastle
-            | Flags::DoublePawnPush
-            | Flags::EpCapture => return, // Skip for flags that dont need checking for update
+            MoveFlags::KingSideCastle
+            | MoveFlags::QueenSideCastle
+            | MoveFlags::DoublePawnPush
+            | MoveFlags::EpCapture => return, // Skip for flags that dont need checking for update
             _ => {}
         }
         let sq_from: Square = m.sq_from();
@@ -1441,11 +1451,11 @@ impl Board {
             _ => {}
         }
         match m.flags() {
-            Flags::Capture
-            | Flags::KnightPromotionCapture
-            | Flags::BishopPromotionCapture
-            | Flags::RookPromotionCapture
-            | Flags::QueenPromotionCapture => {}
+            MoveFlags::Capture
+            | MoveFlags::KnightPromotionCapture
+            | MoveFlags::BishopPromotionCapture
+            | MoveFlags::RookPromotionCapture
+            | MoveFlags::QueenPromotionCapture => {}
             _ => return,
         }
         match m.sq_to() {

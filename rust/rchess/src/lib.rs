@@ -1,19 +1,16 @@
 mod bitboard;
 pub mod board;
-mod color;
-mod r#move;
 pub mod perft;
-mod piece;
-mod prng;
-mod square;
 mod statics;
 mod errors;
+mod types;
+
 use pyo3::prelude::*;
 
 #[pymodule]
 mod _lib {
     use crate::board;
-    use crate::color;
+    use crate::types::color;
     use pyo3::prelude::*;
 
     #[pyclass]
