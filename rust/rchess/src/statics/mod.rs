@@ -6,11 +6,11 @@ mod zobrist;
 mod prng;
 
 use crate::bitboard::Bitboard;
-use crate::board::CastlingRights;
 use crate::types::color::Color;
 use crate::types::piece::Piece;
 use crate::types::square::Square;
 use std::sync::Once;
+use crate::types::castling_rights::CastlingRights;
 
 static INIT: Once = Once::new();
 
