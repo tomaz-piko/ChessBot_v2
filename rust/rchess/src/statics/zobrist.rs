@@ -1,7 +1,7 @@
-use crate::board::CastlingRights;
-use crate::types::piece::Piece;
 use crate::statics::prng::Prng;
+use crate::types::piece::Piece;
 use crate::types::square::Square;
+use crate::types::castling_rights::CastlingRights;
 
 static mut ZOBRIST_TABLE: [[u64; 64]; 6] = [[0; 64]; 6];
 static mut ZOBRIST_BLACK: u64 = 0;

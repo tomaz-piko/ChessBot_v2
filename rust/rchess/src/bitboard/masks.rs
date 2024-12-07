@@ -4,8 +4,8 @@ use crate::types::square::Square;
 pub const BB_EMPTY: Bitboard = Bitboard(0);
 pub const BB_FULL: Bitboard = Bitboard(0xFFFFFFFFFFFFFFFF);
 
-pub const BB_LIGHT_SQUARES: Bitboard = Bitboard(0x55AA_55AA_55AA_55AA);
-pub const BB_DARK_SQUARES: Bitboard = Bitboard(0xAA55_AA55_AA55_AA55);
+//pub const BB_LIGHT_SQUARES: Bitboard = Bitboard(0x55AA_55AA_55AA_55AA);
+//pub const BB_DARK_SQUARES: Bitboard = Bitboard(0xAA55_AA55_AA55_AA55);
 
 pub const BB_RANKS: [Bitboard; 8] = [
     Bitboard(0x0000_0000_0000_00FF),

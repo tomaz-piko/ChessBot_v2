@@ -49,3 +49,10 @@ fn test_color_not() {
     assert_eq!(WHITE, !BLACK);
     assert_eq!(BLACK, !WHITE);
 }
+
+#[test]
+fn test_index() {
+    let bbs: [Bitboard; 2] = [Bitboard(1), Bitboard(0)];
+    assert_eq!(Bitboard(0), bbs[Color::White as usize]); // White == 1 == true
+    assert_eq!(Bitboard(1), bbs[Color::Black as usize]); // Black == 0 == false
+}

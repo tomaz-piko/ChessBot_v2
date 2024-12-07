@@ -1,7 +1,7 @@
 #![allow(static_mut_refs)]
 use crate::bitboard::masks::{BB_EMPTY, BB_FILES, BB_RANKS};
 use crate::bitboard::Bitboard;
-use crate::board::{AFILE, HFILE, RANK1, RANK8};
+use crate::types::ranks_and_files::{AFILE, HFILE, RANK1, RANK8};
 use crate::types::piece::Piece;
 use crate::statics::prng::Prng;
 use crate::types::square::SQUARES;
