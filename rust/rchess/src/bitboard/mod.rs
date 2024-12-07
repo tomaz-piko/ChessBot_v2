@@ -178,6 +178,20 @@ impl Bitboard {
     }
 
     #[inline(always)]
+    pub fn flip_vertical(bb: Bitboard) -> Bitboard {
+        let mut f = bb.0;
+        f = f << 56
+            | ((f << 40) & 0x00ff_0000_0000_0000)
+            | ((f << 24) & 0x0000_ff00_0000_0000)
+            | ((f << 8) & 0x0000_00ff_0000_0000)
+            | ((f >> 8) & 0x0000_0000_ff00_0000)
+            | ((f >> 24) & 0x0000_0000_00ff_0000)
+            | ((f >> 40) & 0x0000_0000_0000_ff00)
+            | f >> 56;
+        Bitboard(f)
+    }
+
+    #[inline(always)]
     pub fn shift(bb: Bitboard, dir: Direction) -> Bitboard {
         match dir {
             NORTH => bb << 8,
@@ -375,5 +389,15 @@ mod bitboard_tests {
             Bitboard::shift(starting_pawns, NORTH_WEST & BLACK),
             expected
         );
+    }
+
+    #[test]
+    fn flip_vertical() {
+        let bb = Bitboard(0x0000_0000_1001_EE00);
+        let expected = Bitboard(0x00EE_0110_0000_0000);
+        assert_eq!(Bitboard::flip_vertical(bb), expected);
+        let bb = Bitboard(0x00EE_0110_0000_0000);
+        let expected = Bitboard(0x0000_0000_1001_EE00);
+        assert_eq!(Bitboard::flip_vertical(bb), expected)
     }
 }

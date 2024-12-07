@@ -29,10 +29,11 @@ pub struct HistoryPlane {
     pieces: [Bitboard; 6],
     occupancy: [Bitboard; 2],
     repetition_count: u8,
+    zobrist_hash: u64,
 }
 
 impl HistoryPlane {
-    pub fn color(&self) -> Color {
+    pub fn turn(&self) -> Color {
         self.turn
     }
 
@@ -46,6 +47,10 @@ impl HistoryPlane {
 
     pub fn repetition_count(&self) -> u8 {
         self.repetition_count
+    }
+
+    pub fn zobrist_hash(&self) -> u64 {
+        self.zobrist_hash
     }
 }
 
@@ -248,21 +253,36 @@ impl Board {
         &self.history_planes
     }
 
-    #[inline(always)]
-    pub fn make_image(&self) -> Vec<Bitboard> {
-        let us: Color = self.turn;
+    pub fn history_hash(&self) -> u64 {
+        let mut combined_hash: u64 = self.zobrist_hash;
+        for plane in self.history_planes.iter() {
+            combined_hash ^= plane.zobrist_hash;
+        };
+        combined_hash
+    }
+
+    pub fn history(&self, flip_uneven: bool) -> (Vec<Bitboard>, u64) {
         let mut image: Vec<Bitboard> = Vec::new();
+        let mut combined_hash: u64 = 0;
 
         // Add current position to history planes
         let mut time_steps: VecDeque<HistoryPlane> = VecDeque::with_capacity(8);
         time_steps.push_front(self.to_history_plane());
         time_steps.extend(self.history_planes.iter().cloned());
-
         // Add bitboards to image
-        for time_step in time_steps.iter() {
+        for (t, time_step) in time_steps.iter().enumerate() {
+            let us = if flip_uneven {
+                time_step.turn()
+            } else {
+                self.turn()
+            };
             for c in [us, !us] {
                 for p in PIECES.iter() {
-                    image.push(time_step.pieces_bb(*p) & time_step.occupancy_bb(c));
+                    let mut bb = time_step.pieces_bb(*p) & time_step.occupancy_bb(c);
+                    if us == WHITE {
+                        bb = Bitboard::flip_vertical(bb);
+                    }
+                    image.push(bb);
                 }
             }
             for rc in [2, 3] {
@@ -272,10 +292,12 @@ impl Board {
                     image.push(BB_EMPTY);
                 }
             }
+            combined_hash ^= time_step.zobrist_hash;
         }
         if time_steps.len() < 8 {
             image.resize(image.len() + 14 * (8 - time_steps.len()), BB_EMPTY);
         }
+        let us = self.turn();
         for c in [us, !us] {
             if self.castling_rights.has_kingside_rights(c) {
                 image.push(BB_FULL)
@@ -289,8 +311,7 @@ impl Board {
             }
         }
         image.push(Bitboard(self.half_move_counter() as u64));
-
-        image
+        (image, combined_hash)
     }
 
     pub fn legal_moves(&mut self) -> Vec<Move> {
@@ -1234,7 +1255,8 @@ impl Board {
             turn: self.turn,
             pieces: self.pieces_bb,
             occupancy: self.occupancy_bb,
-            repetition_count: self.count_repetitions(3),
+            repetition_count: self.count_repetitions(3), // TODO always need to count?
+            zobrist_hash: self.zobrist_hash,
         }
     }
 }
@@ -1284,7 +1306,7 @@ impl Display for Board {
 }
 
 #[cfg(test)]
-mod tests {
+mod board_tests {
     use super::*;
 
     #[test]
@@ -1451,5 +1473,139 @@ mod tests {
         // King + two rooks vs King + bishop & knight
         let board = Board::new(Some("6nb/4k3/8/8/4K3/3RR3/8/8 b - - 1 1"));
         assert_eq!(board.draw_by_insufficient_material(), false, "KRR vs KBN should not be draw by insufficient material (rooks win)");
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+
+    #[test]
+    fn test_history_image_initial_position() {
+        let board = Board::new(None);
+        let (image, combined_hash) = board.history(false);
+        assert_eq!(image.len(), 14 * 8 + 5);
+        assert_eq!(combined_hash, board.zobrist_hash());
+        for i in 14..(14 * 8) {
+            assert_eq!(image[i], BB_EMPTY);
+        }
+        for i in (14 * 8)..(14 * 8 + 4) {
+            assert_eq!(image[i], BB_FULL);
+        }
+        assert_eq!(image[image.len() - 1], BB_EMPTY);
+    }
+
+    #[test]
+    fn test_history_image_with_lt8_moves() {
+        let mut board = Board::new(None);
+        board.push_uci("e2e4").unwrap();
+        board.push_uci("e7e5").unwrap();
+        let (image, combined_hash) = board.history(false);
+        assert_eq!(image.len(), 14 * 8 + 5);
+        for i in 0..3 {
+            let from = 14 * i;
+            let to = (14 * (i + 1)) - 2;
+            for j in from..to {
+                assert_ne!(image[j], BB_EMPTY);
+            }
+        }
+        for i in (14*3)..(14 * 8) {
+            assert_eq!(image[i], BB_EMPTY);
+        }
+        for i in (14 * 8)..(14 * 8 + 4) {
+            assert_eq!(image[i], BB_FULL);
+        }
+        assert_eq!(image[image.len() - 1], BB_EMPTY);
+    }
+
+    #[test]
+    fn test_history_image_with_lt8_moves_flipped() {
+        let mut board = Board::new(None);
+        board.push_uci("e2e4").unwrap();
+        board.push_uci("e7e5").unwrap();
+        let (image, combined_hash) = board.history(true);
+        assert_eq!(image.len(), 14 * 8 + 5);
+        for i in 0..3 {
+            let from = 14 * i;
+            let to = (14 * (i + 1)) - 2;
+            for j in from..to {
+                assert_ne!(image[j], BB_EMPTY);
+            }
+        }
+        for i in (14*3)..(14 * 8) {
+            assert_eq!(image[i], BB_EMPTY);
+        }
+        for i in (14 * 8)..(14 * 8 + 4) {
+            assert_eq!(image[i], BB_FULL);
+        }
+        assert_eq!(image[image.len() - 1], BB_EMPTY);
+    }
+
+    #[test]
+    fn test_history_image_with_gt8_moves() {
+        let mut board = Board::new(None);
+        board.push_uci("e2e4").unwrap();
+        board.push_uci("e7e5").unwrap();
+        board.push_uci("d2d4").unwrap();
+        board.push_uci("d7d6").unwrap();
+        board.push_uci("g1f3").unwrap();
+        board.push_uci("g8f6").unwrap();
+        board.push_uci("g2g3").unwrap();
+        board.push_uci("b8c6").unwrap();
+        board.push_uci("f1g2").unwrap();
+        board.push_uci("f8e7").unwrap();
+        board.push_uci("e1g1").unwrap();
+        let (image, combined_hash) = board.history(false);
+        assert_eq!(image.len(), 14 * 8 + 5);
+        for i in 0..8 {
+            let from = 14 * i;
+            let to = (14 * (i + 1)) - 2;
+            for j in from..to {
+                assert_ne!(image[j], BB_EMPTY);
+            }
+        }
+        // Blacks turn to move, so first two castling planes should be BB_FULL
+        assert_eq!(image[112], BB_FULL);
+        assert_eq!(image[113], BB_FULL);
+        // White castled on last turn so both castling planes should be BB_EMPTY
+        assert_eq!(image[114], BB_EMPTY);
+        assert_eq!(image[115], BB_EMPTY);
+        // No captures accured so last plane should be equal to moves played (ply)
+        assert_eq!(image[116], Bitboard(4));
+        assert_eq!(image[116], Bitboard(board.half_move_counter() as u64))
+    }
+
+    #[test]
+    fn test_history_image_with_gt8_moves_flipped() {
+        let mut board = Board::new(None);
+        board.push_uci("e2e4").unwrap();
+        board.push_uci("e7e5").unwrap();
+        board.push_uci("d2d4").unwrap();
+        board.push_uci("d7d6").unwrap();
+        board.push_uci("g1f3").unwrap();
+        board.push_uci("g8f6").unwrap();
+        board.push_uci("g2g3").unwrap();
+        board.push_uci("b8c6").unwrap();
+        board.push_uci("f1g2").unwrap();
+        board.push_uci("f8e7").unwrap();
+        board.push_uci("e1g1").unwrap();
+        let (image, combined_hash) = board.history(true);
+        assert_eq!(image.len(), 14 * 8 + 5);
+        for i in 0..8 {
+            let from = 14 * i;
+            let to = (14 * (i + 1)) - 2;
+            for j in from..to {
+                assert_ne!(image[j], BB_EMPTY);
+            }
+        }
+        // Blacks turn to move, so first two castling planes should be BB_FULL
+        assert_eq!(image[112], BB_FULL);
+        assert_eq!(image[113], BB_FULL);
+        // White castled on last turn so both castling planes should be BB_EMPTY
+        assert_eq!(image[114], BB_EMPTY);
+        assert_eq!(image[115], BB_EMPTY);
+        // No captures accured so last plane should be equal to moves played (ply)
+        assert_eq!(image[116], Bitboard(4));
+        assert_eq!(image[116], Bitboard(board.half_move_counter() as u64))
     }
 }
