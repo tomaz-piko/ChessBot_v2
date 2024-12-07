@@ -12,7 +12,7 @@ use crate::types::castling_rights::CastlingRights;
 use crate::types::r#move::{MoveFlags, Move};
 use crate::types::ranks_and_files::{RANK3, RANK7};
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     Checkmate,
     Stalemate,
@@ -71,11 +71,6 @@ pub struct Board {
     pub lookups: Lookups,
 }
 
-// // // // // // // // // // // // //
-//                                  //
-//   Setup & state vars & methods   //
-//                                  //
-// // // // // // // // // // // // //
 impl Default for Board {
     fn default() -> Self {
         Board {
@@ -124,10 +119,7 @@ impl Clone for Board {
 
 impl Board {
     pub fn new(fen: Option<&str>) -> Board {
-        let fen = match fen {
-           Some(fen) => fen,
-           None => STARTING_POSITION,
-        };
+        let fen = fen.unwrap_or_else(|| STARTING_POSITION);
         match Self::try_from_fen(fen) {
             Ok(board) => board,
             Err(err) => panic!("{}", err),
@@ -312,25 +304,25 @@ impl Board {
         self.cached_legal_moves.clone()
     }
 
-    pub fn is_terminal(&mut self) -> (bool, Option<Color>) {
-        if self.is_checkmate() {
+    pub fn terminal(&mut self) -> (bool, Option<Color>) {
+        if self.checkmate() {
             self.outcome = Some(Outcome::Checkmate);
             return (true, Some(!self.turn));
         }
-        if self.is_stalemate() {
+        if self.stalemate() {
             self.outcome = Some(Outcome::Stalemate);
             return (true, None);
         }
-        if self.is_draw_by_threefold_repetition() {
-            self.outcome = Some(Outcome::ThreeFoldRepetition);
-            return (true, None);
-        }
-        if self.is_draw_by_insufficient_material() {
+        if self.draw_by_insufficient_material() {
             self.outcome = Some(Outcome::InsufficientMaterial);
             return (true, None);
         }
-        if self.is_draw_by_50_move_rule() {
+        if self.draw_by_50move_rule() {
             self.outcome = Some(Outcome::FiftyMoveRule);
+            return (true, None);
+        }
+        if self.draw_by_threefold_repetition() {
+            self.outcome = Some(Outcome::ThreeFoldRepetition);
             return (true, None);
         }
         (false, None)
@@ -510,75 +502,62 @@ impl Board {
         Ok(MoveFlags::QuietMove)
     }
 
-    fn is_checkmate(&mut self) -> bool {
+    fn checkmate(&mut self) -> bool {
         self.legal_moves().is_empty() && self.cached_is_check.unwrap_or(false)
     }
 
-    fn is_stalemate(&mut self) -> bool {
+    fn stalemate(&mut self) -> bool {
         self.legal_moves().is_empty() && !self.cached_is_check.unwrap_or(false)
     }
 
-    fn has_insufficient_material(&self, player: Color) -> bool {
-        // King + rook, queen or pawn is not insufficient material
-        let rqp = self.pieces_bb(Piece::Rook, player)
-            | self.pieces_bb(Piece::Queen, player)
-            | self.pieces_bb(Piece::Pawn, player);
-        if rqp != BB_EMPTY {
+    fn draw_by_insufficient_material(&self) -> bool {
+        if self.piece_count() > 5 {
             return false;
         }
-        // A knight is not insufficient material if we have more than one
-        let knights = self.pieces_bb(Piece::Knight, player);
-        let knights_count = knights.pop_count();
-
-        if knights_count > 1 {
+        if self.piece_count() == 2 {
+            return true
+        }
+        if self.pieces_bb[Piece::Pawn as usize] != BB_EMPTY {
+            // Detecting draws with pawns included is not as straight forward and requires more comlex logic
             return false;
-        } else if knights_count == 1 {
-            // If opponent has more than one piece that is not a king or queen
-            let opponent = !player;
-            let non_king_queen = self.occupancy_bb(opponent)
-                & !self.pieces_bb(Piece::King, opponent)
-                & !self.pieces_bb(Piece::Queen, opponent);
-            if non_king_queen.pop_count() > 1 {
-                return false;
+        };
+        let mut white_material_count: f32 = 0.0;
+        let mut white_knight_count: i8 = 0;
+        let mut black_material_count: f32 = 0.0;
+        let mut black_knight_count: i8 = 0;
+        self.pieces_list.iter().enumerate().for_each(|(i, &piece)| {
+            if let Some(p) = piece {
+                let piece_value = match p {
+                    Piece::Bishop => 3.5,
+                    Piece::Knight => 3.0,
+                    Piece::Rook => 5.0,
+                    Piece::Queen => 9.0,
+                    _ => 0.0,
+                };
+                if (BB_SQUARES[i] & self.occupancy_bb(BLACK)) == BB_EMPTY {
+                    if p == Piece::Knight {
+                        white_knight_count += 1;
+                    }
+                    white_material_count += piece_value;
+                } else {
+                    if p == Piece::Knight {
+                        black_knight_count += 1;
+                    }
+                    black_material_count += piece_value;
+                };
             }
-        }
-        // Bishops on opposite colors are not insufficient material
-        let light_bishops = self.pieces_bb(Piece::Bishop, player) & BB_LIGHT_SQUARES;
-        let dark_bishops = self.pieces_bb(Piece::Bishop, player) & BB_DARK_SQUARES;
-        let bishop_count = light_bishops.pop_count() + dark_bishops.pop_count();
-        if bishop_count > 1 {
-            // With two bishops, we can always checkmate
-            return false;
-        } else if bishop_count == 1 {
-            // With one bishop, we can only checkmate if the opponent has a knight or pawn or bishop of opposite color to block the king
-            let opponent = !player;
-            let opposite_bishop = if light_bishops != BB_EMPTY {
-                self.pieces_bb(Piece::Bishop, opponent) & BB_DARK_SQUARES
-            } else {
-                self.pieces_bb(Piece::Bishop, opponent) & BB_LIGHT_SQUARES
-            };
-            let kpb = self.pieces_bb(Piece::Knight, opponent)
-                | self.pieces_bb(Piece::Pawn, opponent)
-                | opposite_bishop;
-            if kpb != BB_EMPTY {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    fn is_draw_by_insufficient_material(&self) -> bool {
-        if self.piece_count > 5 {
-            return false;
-        }
-        if self.piece_count == 2 {
+        });
+        if (white_material_count - black_material_count).abs() <= 4.0 {
             return true;
+        };
+        // Handle KNN vs K draw which is not detected with material counting
+        if (white_knight_count - black_knight_count).abs() == 2 {
+            return true
         }
-        self.has_insufficient_material(self.turn) && self.has_insufficient_material(!self.turn)
+        false
     }
 
-    fn is_draw_by_50_move_rule(&self) -> bool {
+    fn draw_by_50move_rule(&self) -> bool {
         self.half_move_counter >= 100
     }
 
@@ -599,7 +578,7 @@ impl Board {
         repetitions
     }
 
-    fn is_draw_by_threefold_repetition(&self) -> bool {
+    fn draw_by_threefold_repetition(&self) -> bool {
         // Check for three repetitions from last capture or pawn move
         if self.count_repetitions(3) >= 3 {
             return true;
@@ -734,12 +713,13 @@ impl Board {
     fn generate_legal_moves(&self) -> (Vec<Move>, bool) {
         let mut moves: Vec<Move> = Vec::new();
         let mut is_check: bool = false;
+
         let player: Color = self.turn;
         let opponent: Color = !self.turn;
         let player_pieces: Bitboard = self.occupancy_bb(player);
         let opponent_pieces: Bitboard = self.occupancy_bb(opponent);
         let occupancy: Bitboard = player_pieces | opponent_pieces;
-        let player_king_square = self.pieces_bb(Piece::King, player).bsf().unwrap();
+        let player_king_square = self.pieces_bb(Piece::King, player).bsf().unwrap(); // Just panic if any of kings is not on board
         let opponent_king_square = self.pieces_bb(Piece::King, opponent).bsf().unwrap();
         let occupancy_minus_king: Bitboard = occupancy ^ BB_SQUARES[player_king_square];
         let player_orth_sliders: Bitboard =
@@ -1083,7 +1063,7 @@ impl Board {
         match m.flags() {
             MoveFlags::QuietMove => {
                 self.move_piece(m.sq_from(), m.sq_to(), self.turn)?;
-                if self.piece_at(m.sq_to()).unwrap() == Piece::Pawn {
+                if self.piece_at(m.sq_to()).unwrap() == Piece::Pawn { // Unwrap is safe because we know there is a piece at the square
                     self.half_move_counter = 0;
                 } else {
                     self.half_move_counter += 1;
@@ -1259,12 +1239,6 @@ impl Board {
     }
 }
 
-impl std::fmt::Debug for Board {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
-}
-
 impl Display for Board {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         const HORIZONTAL_LINE: &str = "  +---+---+---+---+---+---+---+---+\n";
@@ -1306,5 +1280,176 @@ impl Display for Board {
         board_str.push_str(format!("Fen: {}\n", self.fen()).as_str());
         board_str.push_str(format!("Key: {:02x}", self.zobrist_hash()).as_str());
         write!(f, "{}", board_str)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_board_new() {
+        // Covers testing for starting position fen and empty fen
+        // rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -
+        let board = Board::new(None);
+        assert_eq!(board.turn(), WHITE);
+        assert_eq!(board.castling_rights(), "KQkq");
+        assert_eq!(board.half_move_counter(), 0);
+        assert_eq!(board.ply(), 0);
+        assert_eq!(board.full_move_counter(), 1);
+        assert_eq!(board.piece_count(), 32);
+    }
+
+    #[test]
+    fn test_board_from_valid_fen() {
+        let board = Board::new(Some("r4rk1/pppnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/1R2K2R b K - 10 9"));
+        assert_eq!(board.turn(), BLACK);
+        assert_eq!(board.castling_rights(), "K");
+        assert_eq!(board.half_move_counter(), 10);
+        assert_eq!(board.ply(), 17);
+        assert_eq!(board.full_move_counter(), 9);
+        assert_eq!(board.piece_count(), 32);
+    }
+    #[test]
+    #[should_panic(expected = "invalid FEN string: r3k2r/ppFnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8 (Invalid piece string: F)")]
+    fn test_board_from_invalid_fen() {
+        let _board = Board::new(Some("r3k2r/ppFnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8"));
+    }
+
+    #[test]
+    fn test_board_fullmoves_counter() {
+        let mut board = Board::new(None);
+        assert_eq!(board.full_move_counter(), 1);
+        board.push_uci("e2e4").unwrap();
+        board.push_uci("e7e5").unwrap();
+        assert_eq!(board.full_move_counter(), 2);
+        board.push_uci("e4e5").unwrap();
+        assert_eq!(board.full_move_counter(), 2);
+        board.push_uci("e1e2").unwrap();
+        assert_eq!(board.full_move_counter(), 3);
+    }
+
+    #[test]
+    fn test_board_halfmoves_incr() {
+        // Non capturing piece moves should increment half move counter
+        // Castling and moves that lose castling right also increment half move counter
+        let mut board = Board::new(Some("r3k2r/pppnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8"));
+        assert_eq!(board.half_move_counter(), 8);
+        assert_eq!(board.piece_count(), 32);
+        board.push_uci("f6h5").unwrap(); // Non capturing knight move
+        assert_eq!(board.half_move_counter(), 9);
+        board.push_uci("e3f5").unwrap(); // Non capturing bishop move
+        assert_eq!(board.half_move_counter(), 10);
+        board.push_uci("e8g8").unwrap(); // Castling
+        assert_eq!(board.half_move_counter(), 11);
+        board.push_uci("a1b1").unwrap(); // Non capturing rook move, also loses queenside castling right
+        assert_eq!(board.half_move_counter(), 12);
+        assert_eq!(board.piece_count(), 32);
+    }
+
+    #[test]
+    fn test_board_halfmoves_reset() {
+        // Capturing piece moves should reset half move counter to 0
+        // Pawn moves including promotions should reset half move counter to 0
+        let board = Board::new(Some("r3k2r/pppnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8"));
+        assert_eq!(board.half_move_counter(), 8);
+        assert_eq!(board.piece_count(), 32);
+        let mut tmp_board = board.clone();
+        tmp_board.push_uci("h7h6").unwrap(); // Pawn move
+        assert_eq!(tmp_board.half_move_counter(), 0);
+        tmp_board = board.clone();
+        tmp_board.push_uci("f6e4").unwrap();
+        assert_eq!(tmp_board.half_move_counter(), 0);
+        assert_eq!(tmp_board.piece_count(), 31);
+        assert_eq!(board.piece_count(), 32);
+    }
+
+    #[test]
+    fn test_board_threefold_repetition() {
+        let mut board = Board::new(None);
+        board.push_uci("e2e4").unwrap();
+        board.push_uci("e7e5").unwrap();
+        board.push_uci("g1f3").unwrap();
+        board.push_uci("g8f6").unwrap();
+        board.push_uci("f3g1").unwrap();
+        board.push_uci("f6g8").unwrap();
+        board.push_uci("g1f3").unwrap();
+        board.push_uci("g8f6").unwrap();
+        board.push_uci("f3g1").unwrap();
+        let (terminal, winner) = board.terminal();
+        assert_eq!(terminal, false);
+        assert_eq!(board.count_repetitions(3), 2);
+        board.push_uci("f6g8").unwrap();
+        let (terminal, winner) = board.terminal();
+        assert_eq!(terminal, true);
+        assert_eq!(board.count_repetitions(3), 3);
+        assert_eq!(board.outcome(), Some(Outcome::ThreeFoldRepetition));
+    }
+
+    #[test]
+    fn test_board_threefold_repetition2() {
+        let mut board = Board::new(None);
+        board.push_uci("e2e4").unwrap();
+        board.push_uci("e7e5").unwrap();
+        board.push_uci("g1f3").unwrap();
+        board.push_uci("g8f6").unwrap();
+        board.push_uci("f3g1").unwrap();
+        board.push_uci("f6g8").unwrap();
+        board.push_uci("g1f3").unwrap();
+        board.push_uci("g8f6").unwrap();
+        board.push_uci("d2d4").unwrap();
+        board.push_uci("d7d5").unwrap();
+        board.push_uci("f3g1").unwrap();
+        let (terminal, winner) = board.terminal();
+        assert_eq!(terminal, false);
+        assert_eq!(board.count_repetitions(3), 1);
+        board.push_uci("f6g8").unwrap();
+        let (terminal, winner) = board.terminal();
+        assert_eq!(terminal, false);
+        assert_eq!(board.count_repetitions(3), 1);
+        assert_eq!(board.outcome(), None);
+    }
+
+    #[test]
+    fn test_board_insufficient_material() {
+        // King vs king
+        let board = Board::new(Some("8/8/4k3/8/4K3/8/8/8 w - - 0 1"));
+        assert_eq!(board.draw_by_insufficient_material(), true, "K vs K should be draw by insufficient material");
+        // King vs king + knight
+        let board = Board::new(Some("8/8/4k3/8/2N1K3/8/8/8 w - - 0 1"));
+        assert_eq!(board.draw_by_insufficient_material(), true, "K vs K+N should be draw by insufficient material");
+        // King vs king + bishop
+        let board = Board::new(Some("8/8/4k3/8/2B1K3/8/8/8 w - - 0 1"));
+        assert_eq!(board.draw_by_insufficient_material(), true, "K vs K+B should be draw by insufficient material");
+        // King vs king + two knights
+        let board = Board::new(Some("8/8/4k3/7N/2N1K3/8/8/8 w - - 0 1"));
+        assert_eq!(board.draw_by_insufficient_material(), true, "K vs KNN should be draw by insufficient material");
+        // King + knight vs King + bishop
+        let board = Board::new(Some("8/6b1/4k3/8/2N1K3/8/8/8 w - - 0 1"));
+        assert_eq!(board.draw_by_insufficient_material(), true, "K+N vs K+B should be draw by insufficient material");
+        // King + knight vs King + knight
+        let board = Board::new(Some("8/6n1/4k3/8/2N1K3/8/8/8 w - - 0 1"));
+        assert_eq!(board.draw_by_insufficient_material(), true, "K+N vs K+N should be draw by insufficient material");
+        // King + two knights vs King + knight
+        let board = Board::new(Some("8/6n1/4k3/8/2N1K1N1/8/8/8 w - - 0 1"));
+        assert_eq!(board.draw_by_insufficient_material(), true, "KNN vs KN should be draw by insufficient material");
+        // King + two knights vs King + bishop
+        let board = Board::new(Some("8/6b1/4k3/8/2N1K1N1/8/8/8 w - - 0 1"));
+        assert_eq!(board.draw_by_insufficient_material(), true, "KNN vs KB should be draw by insufficient material");
+        // King + two bishop vs King + bishop
+        let board = Board::new(Some("8/6b1/4k3/8/2B1K1B1/8/8/8 w - - 0 1"));
+        assert_eq!(board.draw_by_insufficient_material(), true, "KBB vs KB should be draw by insufficient material");
+        // King + two bishop vs King + knight (not draw by insufficient material)
+        let board = Board::new(Some("8/6n1/4k3/8/2B1K1B1/8/8/8 w - - 0 1"));
+        assert_eq!(board.draw_by_insufficient_material(), true, "KBB vs KN shoul be draw by insufficient material (according to chess.com)");
+        // King + knight & bishop vs King (not draw by insufficient material)
+        let board = Board::new(Some("8/8/4k3/8/2B1K1N1/8/8/8 w - - 0 1"));
+        assert_eq!(board.draw_by_insufficient_material(), false, "KBN vs K should not be draw by insufficient material");
+        // King + queen vs King + queen
+        let board = Board::new(Some("8/4k1q1/8/3Q4/4K3/8/8/8 b - - 1 1"));
+        assert_eq!(board.draw_by_insufficient_material(), true, "KQ vs KQ should be draww by insufficient material");
+        // King + two rooks vs King + bishop & knight
+        let board = Board::new(Some("6nb/4k3/8/8/4K3/3RR3/8/8 b - - 1 1"));
+        assert_eq!(board.draw_by_insufficient_material(), false, "KRR vs KBN should not be draw by insufficient material (rooks win)");
     }
 }

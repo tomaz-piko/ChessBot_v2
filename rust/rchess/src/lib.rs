@@ -74,8 +74,8 @@ mod _lib {
             }
         }
 
-        fn is_terminal(&mut self) -> (bool, Option<bool>) {
-            let (is_terminal, winner) = self.board.is_terminal();
+        fn terminal(&mut self) -> (bool, Option<bool>) {
+            let (is_terminal, winner) = self.board.terminal();
             (is_terminal, winner.map(|c| c == color::Color::White))
         }
 
