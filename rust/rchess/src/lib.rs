@@ -43,8 +43,13 @@ mod _lib {
             self.board.legal_moves().iter().map(|m| m.uci()).collect()
         }
 
-        fn make_image(&self) -> Vec<u64> {
-            self.board.make_image().iter().map(|&x| x.0).collect()
+        fn history_hash(&self) -> u64 {
+            self.board.history_hash()
+        }
+
+        fn history(&self, flip_uneven: bool) -> (Vec<u64>, u64) {
+            let (image, hash) = self.board.history(flip_uneven);
+            (image.iter().map(|&x| x.0).collect(), hash)
         }
 
         fn pieces_on_board(&self) -> u8 {
