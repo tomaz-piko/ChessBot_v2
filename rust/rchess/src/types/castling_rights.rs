@@ -63,8 +63,8 @@ impl CastlingRights {
 
     pub fn remove_queenside_rights(&mut self, player: Color) {
         match player {
-            Color::White => self.0 &= WHITE_OOO,
-            Color::Black => self.0 &= BLACK_OOO,
+            Color::White => self.0 &= !WHITE_OOO,
+            Color::Black => self.0 &= !BLACK_OOO,
         }
     }
 
