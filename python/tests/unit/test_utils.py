@@ -1,7 +1,7 @@
 import unittest
 from utils import convert_u64_to_np
 
-class TestGameImage(unittest.TestCase):
+class TestUtils(unittest.TestCase):
     def test_image_single_item(self):
         fake_image = [i for i in range(117)]
         result = convert_u64_to_np(fake_image)
