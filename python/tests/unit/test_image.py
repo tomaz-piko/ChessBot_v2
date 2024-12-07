@@ -64,9 +64,17 @@ class TestGameImage(unittest.TestCase):
         board = Board()
         hist, _ = board.history(flip)
         image = convert_u64_to_np(hist)
-        image = image[0, :, :, :].astype(np.uint8)
         half_move_plane_idx = -1
         self.assertTrue(np.all(image[0, half_move_plane_idx] == 0))
+
+    def test_half_move_clock(self):
+        board = Board()
+        board.push_uci("g1f3")
+        board.push_uci("g8f6")
+        hist, _ = board.history(flip)
+        image = convert_u64_to_np(hist)
+        half_move_plane_idx = -1
+        self.assertTrue(np.all(image[0, half_move_plane_idx] == 2 / 100))
 
     def test_ruy_lopez_white_t0(self): # Checking black and white pieces but from white perspective
         t = 0
