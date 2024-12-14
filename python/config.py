@@ -13,16 +13,17 @@ class BaseConfig:
 
     __num_vl_searches = 16
 
-    def __init__(self):
+    def __init__(self, num_mcts_sims=0, num_mcts_sampling_moves=0, add_root_noise=True, batch_size=64):
         self.type = 'BaseConfig'
         self.__pb_c_factor = (1.0, 1.0)
         self.__pb_c_init = 1.25
         self.__fpu = (1.0, 0.3)
         self.__softmax_temp = 1.0
         self.__policy_temp = 1.0
-        self.__num_mcts_sims = 0
-        self.__num_mcts_sampling_moves = 0
-        self.__add_root_noise = True
+        self.__num_mcts_sims = num_mcts_sims
+        self.__num_mcts_sampling_moves = num_mcts_sampling_moves
+        self.__add_root_noise = add_root_noise
+        self.__batch_size = batch_size
 
     @property
     def history_steps(self):
@@ -95,6 +96,10 @@ class BaseConfig:
     @property
     def num_mcts_sampling_moves(self):
         return self.__num_mcts_sampling_moves
+    
+    @property
+    def batch_size(self):
+        return self.__batch_size
 
 class TestConfig(BaseConfig):
     def __init__(self):
@@ -114,8 +119,7 @@ class PlayConfig(BaseConfig):
 
 class SelfplayConfig(BaseConfig):
     def __init__(self):
-        super().__init__()
+        super().__init__(num_mcts_sims=800, num_mcts_sampling_moves=30, add_root_noise=True, batch_size=64)
         self.type = 'SelfplayConfig'
-        self.__num_mcts_sims = 800
-        self.__num_mcts_sampling_moves = 30
-        self.__add_root_noise = True
+
+selfplayConfig = SelfplayConfig()
