@@ -62,10 +62,6 @@ mod _lib {
             }
         }
 
-        fn evaluate(&self) -> i32 {
-            todo!()
-        }
-
         fn outcome_str(&self) -> String {
             match self.board.outcome() {
                 Some(outcome) => match outcome {
