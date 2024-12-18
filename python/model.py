@@ -12,26 +12,30 @@ from keras.losses import CategoricalCrossentropy
 from keras.regularizers import l2
 from keras.optimizers import SGD, Adam
 import keras.backend as K
-from config import BaseConfig
+
+from configs import defaultConfig, modelConfig
 
 K.set_image_data_format("channels_last")
 
-config = BaseConfig()
-INPUT_SHAPE = config.image_shape
-NUM_ACTIONS = config.num_actions
-CONV_FILTERS = 64
-NUM_RESIDUAL_BLOCKS = 6
-CONV_KERNEL_INITIALIZER = None #"he_normal"
-USE_BIAS_ON_OUTPUTS = True
-VALUE_HEAD_FILTERS = 32
-VALUE_HEAD_DENSE = 128
-POLICY_HEAD_FILTERS = 73
-POLICY_HEAD_LOSS_WEIGHT = 1.0
-VALUE_HEAD_LOSS_WEIGHT = 1.0
-L2_REG = 1e-4
-SGD_MOMENTUM = 0.9
-SGD_NESTEROV = False
-LEARNING_RATE = 0.01
+R = defaultConfig["history_repetition_planes"]
+T = defaultConfig["history_steps"]
+num_planes = (6 * 2 + R) * T + 5 
+
+INPUT_SHAPE = (None, num_planes)
+CONV_FILTERS = modelConfig["conv_filters"]
+NUM_RESIDUAL_BLOCKS = modelConfig["num_residual_blocks"]
+CONV_KERNEL_INITIALIZER = modelConfig["conv_kernel_initializer"] if modelConfig["conv_kernel_initializer"] else None #"he_normal"
+USE_BIAS_ON_OUTPUTS = modelConfig["use_bias_on_output"]
+VALUE_HEAD_FILTERS = modelConfig["value_head_filters"]
+VALUE_HEAD_DENSE = modelConfig["value_head_dense"]
+POLICY_HEAD_FILTERS = modelConfig["policy_head_filters"]
+POLICY_HEAD_DENSE = modelConfig["policy_head_dense"]
+POLICY_HEAD_LOSS_WEIGHT = modelConfig["policy_head_loss_weight"]
+VALUE_HEAD_LOSS_WEIGHT = modelConfig["value_head_loss_weight"]
+L2_REG = modelConfig["l2_regularization"]
+SGD_MOMENTUM = modelConfig["sgd_momentum"]
+SGD_NESTEROV = modelConfig["sgd_nesterov"]
+LEARNING_RATE = modelConfig["learning_rate"]
 
 def generate_model():
     # Define the input layer
@@ -64,7 +68,7 @@ def generate_model():
     policy_head = BatchNormalization(name="PolicyHead-BatchNorm", axis=1)(policy_head)
     policy_head = ReLU(name="PolicyHead-ReLU")(policy_head)
     policy_head = Flatten(name="PolicyHead-Flatten", data_format="channels_first")(policy_head)
-    policy_head = Dense(NUM_ACTIONS, activation='linear', use_bias=USE_BIAS_ON_OUTPUTS, kernel_regularizer=l2(L2_REG), name="policy_head")(policy_head)
+    policy_head = Dense(POLICY_HEAD_DENSE, activation='linear', use_bias=USE_BIAS_ON_OUTPUTS, kernel_regularizer=l2(L2_REG), name="policy_head")(policy_head)
 
     # Define the optimizer
     optimizer = SGD(learning_rate=LEARNING_RATE, nesterov=SGD_NESTEROV, momentum=SGD_MOMENTUM)

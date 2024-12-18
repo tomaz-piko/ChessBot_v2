@@ -22,7 +22,7 @@ def convert_u64_to_np(images: list) -> np.array:
     x = np.bitwise_and(x, mask)
     x = x.astype(bool)
     x = x.astype(np.float32)
-    x = np.reshape(x, (-1, 116, 8, 8))
+    x = np.reshape(x, (-1, 108, 8, 8))
     h = h.astype(np.float32)
     h = (np.ones((batch_size, 1, 8, 8)) * h[:, np.newaxis, np.newaxis, np.newaxis]) / 100.0
     x = np.concatenate([x, h], axis=1).astype(np.float32)

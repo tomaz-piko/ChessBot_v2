@@ -285,17 +285,15 @@ impl Board {
                     image.push(bb);
                 }
             }
-            for rc in [2, 3] {
-                if time_step.repetition_count == rc {
-                    image.push(BB_FULL);
-                } else {
-                    image.push(BB_EMPTY);
-                }
+            if time_step.repetition_count == 2 {
+                image.push(BB_FULL);
+            } else {
+                image.push(BB_EMPTY);
             }
             combined_hash ^= time_step.zobrist_hash;
         }
         if time_steps.len() < 8 {
-            image.resize(image.len() + 14 * (8 - time_steps.len()), BB_EMPTY);
+            image.resize(image.len() + 13 * (8 - time_steps.len()), BB_EMPTY);
         }
         let us = self.turn();
         for c in [us, !us] {
@@ -1255,7 +1253,7 @@ impl Board {
             turn: self.turn,
             pieces: self.pieces_bb,
             occupancy: self.occupancy_bb,
-            repetition_count: self.count_repetitions(3), // TODO always need to count?
+            repetition_count: self.count_repetitions(2), // TODO always need to count?
             zobrist_hash: self.zobrist_hash,
         }
     }
@@ -1484,12 +1482,12 @@ mod image_tests {
     fn test_history_image_initial_position() {
         let board = Board::new(None);
         let (image, combined_hash) = board.history(false);
-        assert_eq!(image.len(), 14 * 8 + 5);
+        assert_eq!(image.len(), 13 * 8 + 5);
         assert_eq!(combined_hash, board.zobrist_hash());
-        for i in 14..(14 * 8) {
+        for i in 13..(13 * 8) {
             assert_eq!(image[i], BB_EMPTY);
         }
-        for i in (14 * 8)..(14 * 8 + 4) {
+        for i in (13 * 8)..(13 * 8 + 4) {
             assert_eq!(image[i], BB_FULL);
         }
         assert_eq!(image[image.len() - 1], BB_EMPTY);
@@ -1501,18 +1499,18 @@ mod image_tests {
         board.push_uci("e2e4").unwrap();
         board.push_uci("e7e5").unwrap();
         let (image, combined_hash) = board.history(false);
-        assert_eq!(image.len(), 14 * 8 + 5);
+        assert_eq!(image.len(), 13 * 8 + 5);
         for i in 0..3 {
-            let from = 14 * i;
-            let to = (14 * (i + 1)) - 2;
+            let from = 13 * i;
+            let to = (13 * (i + 1)) - 2;
             for j in from..to {
                 assert_ne!(image[j], BB_EMPTY);
             }
         }
-        for i in (14*3)..(14 * 8) {
+        for i in (13*3)..(13 * 8) {
             assert_eq!(image[i], BB_EMPTY);
         }
-        for i in (14 * 8)..(14 * 8 + 4) {
+        for i in (13 * 8)..(13 * 8 + 4) {
             assert_eq!(image[i], BB_FULL);
         }
         assert_eq!(image[image.len() - 1], BB_EMPTY);
@@ -1524,18 +1522,18 @@ mod image_tests {
         board.push_uci("e2e4").unwrap();
         board.push_uci("e7e5").unwrap();
         let (image, combined_hash) = board.history(true);
-        assert_eq!(image.len(), 14 * 8 + 5);
+        assert_eq!(image.len(), 13 * 8 + 5);
         for i in 0..3 {
-            let from = 14 * i;
-            let to = (14 * (i + 1)) - 2;
+            let from = 13 * i;
+            let to = (13 * (i + 1)) - 2;
             for j in from..to {
                 assert_ne!(image[j], BB_EMPTY);
             }
         }
-        for i in (14*3)..(14 * 8) {
+        for i in (13*3)..(13 * 8) {
             assert_eq!(image[i], BB_EMPTY);
         }
-        for i in (14 * 8)..(14 * 8 + 4) {
+        for i in (13 * 8)..(13 * 8 + 4) {
             assert_eq!(image[i], BB_FULL);
         }
         assert_eq!(image[image.len() - 1], BB_EMPTY);
@@ -1556,23 +1554,23 @@ mod image_tests {
         board.push_uci("f8e7").unwrap();
         board.push_uci("e1g1").unwrap();
         let (image, combined_hash) = board.history(false);
-        assert_eq!(image.len(), 14 * 8 + 5);
+        assert_eq!(image.len(), 13 * 8 + 5);
         for i in 0..8 {
-            let from = 14 * i;
-            let to = (14 * (i + 1)) - 2;
+            let from = 13 * i;
+            let to = (13 * (i + 1)) - 2;
             for j in from..to {
                 assert_ne!(image[j], BB_EMPTY);
             }
         }
         // Blacks turn to move, so first two castling planes should be BB_FULL
-        assert_eq!(image[112], BB_FULL);
-        assert_eq!(image[113], BB_FULL);
+        assert_eq!(image[104], BB_FULL);
+        assert_eq!(image[105], BB_FULL);
         // White castled on last turn so both castling planes should be BB_EMPTY
-        assert_eq!(image[114], BB_EMPTY);
-        assert_eq!(image[115], BB_EMPTY);
+        assert_eq!(image[106], BB_EMPTY);
+        assert_eq!(image[107], BB_EMPTY);
         // No captures accured so last plane should be equal to moves played (ply)
-        assert_eq!(image[116], Bitboard(4));
-        assert_eq!(image[116], Bitboard(board.half_move_counter() as u64))
+        assert_eq!(image[108], Bitboard(4));
+        assert_eq!(image[108], Bitboard(board.half_move_counter() as u64))
     }
 
     #[test]
@@ -1590,22 +1588,22 @@ mod image_tests {
         board.push_uci("f8e7").unwrap();
         board.push_uci("e1g1").unwrap();
         let (image, combined_hash) = board.history(true);
-        assert_eq!(image.len(), 14 * 8 + 5);
+        assert_eq!(image.len(), 13 * 8 + 5);
         for i in 0..8 {
-            let from = 14 * i;
-            let to = (14 * (i + 1)) - 2;
+            let from = 13 * i;
+            let to = (13 * (i + 1)) - 2;
             for j in from..to {
                 assert_ne!(image[j], BB_EMPTY);
             }
         }
         // Blacks turn to move, so first two castling planes should be BB_FULL
-        assert_eq!(image[112], BB_FULL);
-        assert_eq!(image[113], BB_FULL);
+        assert_eq!(image[104], BB_FULL);
+        assert_eq!(image[105], BB_FULL);
         // White castled on last turn so both castling planes should be BB_EMPTY
-        assert_eq!(image[114], BB_EMPTY);
-        assert_eq!(image[115], BB_EMPTY);
+        assert_eq!(image[106], BB_EMPTY);
+        assert_eq!(image[107], BB_EMPTY);
         // No captures accured so last plane should be equal to moves played (ply)
-        assert_eq!(image[116], Bitboard(4));
-        assert_eq!(image[116], Bitboard(board.half_move_counter() as u64))
+        assert_eq!(image[108], Bitboard(4));
+        assert_eq!(image[108], Bitboard(board.half_move_counter() as u64))
     }
 }

@@ -1,0 +1,37 @@
+[DEFAULT]
+# Model
+model_size = sm
+
+# History
+history_steps = 8
+history_perspective_flip = false
+history_repetition_planes = 1
+
+# Actionspace
+actionspace_size = 1858
+
+#MCTS
+## Root exploration noise
+root_dirichlet_alpha = 0.3
+root_exploration_fraction = 0.25
+
+## Fpu
+fpu_root = 1.0
+fpu_leaf = 0.3
+
+## UCB constants
+pb_c_base = 19652
+pb_c_init = 1.25
+pb_c_factor = 1.0
+
+## Temperatures
+softmax_temp = 1.0
+policy_temp = 1.0
+
+[training]
+batch_size = 1024
+
+[selfplay]
+root_exploration_noise = false
+num_mcts_sims = 800
+num_mcts_sampling_moves = 30

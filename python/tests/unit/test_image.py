@@ -2,10 +2,12 @@ import unittest
 import numpy as np
 from rchess import Board
 from utils import convert_u64_to_np
+from configs import defaultConfig
 
 T = 8
-M = 14
+M = (6 * 2 + defaultConfig["history_repetition_planes"])
 flip = False
+planes_count = T * M + 5
 
 # Ruy lopez opening from whites perspective
 # Turn 0: (e4) B    Turn 1: (e5) W    Turn 2: (Nf3) B   Turn 3: (Nc6) W   Turn 4: (Bb5) B   Turn 5: (a6)  W   Turn 6: (Ba4) B   Turn 7: (Nf6) W       
@@ -51,7 +53,7 @@ class TestGameImage(unittest.TestCase):
         hist, _ = board.history(flip)
         image = convert_u64_to_np(hist)
         image = image[0, :, :, :]
-        self.assertEqual(image.shape, (117, 8, 8))
+        self.assertEqual(image.shape, (planes_count, 8, 8))
 
     def test_image_dtype(self):
         board = Board()
