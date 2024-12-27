@@ -5,3 +5,7 @@ python/*.egg-info
 **/.vscode
 **/Cargo.lock
 **/__pycache__
+**/data
+**/build
+**/**.so
+**/**.c

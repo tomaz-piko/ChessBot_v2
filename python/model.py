@@ -1,3 +1,6 @@
+import os
+import numpy as np
+import tensorflow as tf
 from keras import Model
 from keras.layers import (
     Input,
@@ -10,20 +13,20 @@ from keras.layers import (
 )
 from keras.losses import CategoricalCrossentropy
 from keras.regularizers import l2
-from keras.optimizers import SGD, Adam
+from keras.optimizers import SGD
 import keras.backend as K
 
-from configs import defaultConfig, modelConfig
+from configs import modelConfig
+from configs import selfplayConfig as config
 
 K.set_image_data_format("channels_last")
 
-R = defaultConfig["history_repetition_planes"]
-T = defaultConfig["history_steps"]
-num_planes = (6 * 2 + R) * T + 5 
+R = config["history_repetition_planes"]
+T = config["history_steps"]
+NUM_PLANES = (6 * 2 + R) * T + 5 
 
-INPUT_SHAPE = (None, num_planes)
 CONV_FILTERS = modelConfig["conv_filters"]
-NUM_RESIDUAL_BLOCKS = modelConfig["num_residual_blocks"]
+NUM_RESIDUAL_BLOCKS = modelConfig["residual_blocks"]
 CONV_KERNEL_INITIALIZER = modelConfig["conv_kernel_initializer"] if modelConfig["conv_kernel_initializer"] else None #"he_normal"
 USE_BIAS_ON_OUTPUTS = modelConfig["use_bias_on_output"]
 VALUE_HEAD_FILTERS = modelConfig["value_head_filters"]
@@ -37,12 +40,33 @@ SGD_MOMENTUM = modelConfig["sgd_momentum"]
 SGD_NESTEROV = modelConfig["sgd_nesterov"]
 LEARNING_RATE = modelConfig["learning_rate"]
 
+@tf.function
+def predict_fn(trt_func, images):
+    predictions = trt_func(images)
+    policy_logits = predictions["policy_head"]
+    value = predictions["value_head"]
+    return value, policy_logits
+
+def reshape_planes(x):
+    shape = x.get_shape()
+    x = tf.expand_dims(x, -1)
+    mask = tf.bitwise.left_shift(tf.ones([], dtype=tf.int64), tf.range(64, dtype=tf.int64))
+    x = tf.bitwise.bitwise_and(x, mask)
+    x = tf.cast(x, tf.bool)
+    x = tf.cast(x, tf.float32)
+    x = tf.reshape(x, [-1, int(shape[1]), 8, 8])
+    return x
+
+# TODO CHECK PLANE RESHAPING CORECTNESS
 def generate_model():
     # Define the input layer
-    input_layer = Input(shape=INPUT_SHAPE, name="input_layer")
+    input_layer = Input(shape=(NUM_PLANES), name="input_layer", dtype=tf.int64)
+    planes = reshape_planes(input_layer[:, :-1])
+    last_plane = tf.cast(input_layer[:, -1:], tf.float32)[:, :, tf.newaxis, tf.newaxis] / tf.fill([1, 1, 8, 8], 99.0)
+    x = tf.concat([planes, last_plane], axis=1)
 
     # Define the body
-    x = Conv2D(filters=CONV_FILTERS , kernel_size=3, strides=1, data_format="channels_first", padding="same", use_bias=False, kernel_initializer=CONV_KERNEL_INITIALIZER, kernel_regularizer=l2(L2_REG), name="Body-Conv2D")(input_layer)
+    x = Conv2D(filters=CONV_FILTERS , kernel_size=3, strides=1, data_format="channels_first", padding="same", use_bias=False, kernel_initializer=CONV_KERNEL_INITIALIZER, kernel_regularizer=l2(L2_REG), name="Body-Conv2D")(x)
     x = BatchNormalization(name="Body-BatchNorm", axis=1)(x)
     x = ReLU(name="Body-ReLU")(x)
 
@@ -88,3 +112,41 @@ def generate_model():
         metrics=["accuracy"]
     )
     return model
+
+def save_as_trt_model(model, precision_mode="FP32", build_model=False):
+    def input_fn():
+        np_data = np.load(f"{config['data_path']}/conversion_data/histories.npz")
+        histories = np_data["histories"]
+        # Yield the histories in batches of size defaultConfig["batch_size"]
+        for i in range(0, len(histories), config["batch_size"]):
+            yield (histories[i:i + config["batch_size"]],)
+
+    from tensorflow.python.compiler.tensorrt import trt_convert as trt
+
+    model_save_path = f"{config['data_path']}/models/saved_model"
+    model.save(model_save_path)
+    conversion_params = trt.TrtConversionParams(
+        precision_mode=precision_mode,
+        use_calibration=True if precision_mode == "INT8" else False,
+    )
+
+    converter = trt.TrtGraphConverterV2(
+        input_saved_model_dir=model_save_path,
+        conversion_params=conversion_params,
+    )
+
+    if precision_mode == "INT8":
+        converter.convert(calibration_input_fn=input_fn)
+    else:
+        converter.convert()
+
+    if precision_mode != "INT8" and build_model:
+        converter.build(input_fn=input_fn)
+
+    converter.save(model_save_path)
+
+def load_as_trt_model():
+    model_save_path = f"{config['data_path']}/models/saved_model"
+    loaded_model = tf.saved_model.load(model_save_path)
+    trt_func = loaded_model.signatures['serving_default']
+    return trt_func, loaded_model 

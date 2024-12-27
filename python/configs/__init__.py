@@ -9,12 +9,13 @@ _ints = [
     "history_repetition_planes",
     "actionspace_size",
     "batch_size",
-    "mcts_sims_per_move",
-    "mcts_sampling_moves",
+    "num_mcts_sims",
+    "num_mcts_sampling_moves",
+    "num_vl_searches",
 
     # Model
     "conv_filters",
-    "num_residual_blocks",
+    "residual_blocks",
     "policy_head_filters",
     "value_head_filters",
     "policy_head_dense",

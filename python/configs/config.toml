@@ -1,7 +1,8 @@
 [DEFAULT]
-# Model
 model_size = sm
+data_path = /home/tomaz/ChessBot_v2/data
 
+# Model
 # History
 history_steps = 8
 history_perspective_flip = false
@@ -28,10 +29,13 @@ pb_c_factor = 1.0
 softmax_temp = 1.0
 policy_temp = 1.0
 
+num_vl_searches = 16
+
 [training]
 batch_size = 1024
 
 [selfplay]
-root_exploration_noise = false
+batch_size = 16
+root_exploration_noise = true
 num_mcts_sims = 800
 num_mcts_sampling_moves = 30

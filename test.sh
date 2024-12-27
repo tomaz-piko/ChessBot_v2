@@ -1,2 +1,1 @@
-./test_rs.sh
-./test_py.sh
+python3 -m unittest discover -s python/tests

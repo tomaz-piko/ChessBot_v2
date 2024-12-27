@@ -1,8 +1,8 @@
 mod bitboard;
 pub mod board;
+mod errors;
 pub mod perft;
 mod statics;
-mod errors;
 mod types;
 
 use pyo3::prelude::*;
@@ -47,9 +47,9 @@ mod _lib {
             self.board.history_hash()
         }
 
-        fn history(&self, flip_uneven: bool) -> (Vec<u64>, u64) {
+        fn history(&self, flip_uneven: bool) -> (Vec<i64>, u64) {
             let (image, hash) = self.board.history(flip_uneven);
-            (image.iter().map(|&x| x.0).collect(), hash)
+            (image.iter().map(|&x| x.0 as i64).collect(), hash)
         }
 
         fn pieces_on_board(&self) -> u8 {
