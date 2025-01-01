@@ -13,5 +13,5 @@ extensions = [
 setup(
     name="cy",
     packages=find_packages(),
-    ext_modules=cythonize(extensions),
+    ext_modules=cythonize(extensions, annotate=True),
 )

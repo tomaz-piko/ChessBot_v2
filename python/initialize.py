@@ -61,7 +61,7 @@ while len(histories) < config["batch_size"] * 4:
     num_moves = np.random.randint(5, 15)
     for _ in range(num_moves):
         move = np.random.choice(board.legal_moves())
-        board.push_uci(move)
+        board.push(move)
         terminal, _ = board.terminal()
         if terminal:
             break

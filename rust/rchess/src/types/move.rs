@@ -63,7 +63,7 @@ impl Display for MoveFlags {
 }
 
 #[derive(Clone, Copy)]
-pub struct Move(u16);
+pub struct Move(pub u16);
 
 impl Move {
     #[inline(always)]

@@ -1,16 +1,16 @@
 #![allow(unused_variables)]
 use crate::bitboard::masks::*;
 use crate::bitboard::{Bitboard, NORTH, NORTH2X, NORTH_EAST, NORTH_WEST, SOUTH};
+use crate::errors::BoardError;
+use crate::statics::Lookups;
+use crate::types::castling_rights::CastlingRights;
 use crate::types::color::{Color, BLACK, WHITE};
 use crate::types::piece::{Piece, PIECES};
+use crate::types::r#move::{Move, MoveFlags};
+use crate::types::ranks_and_files::{RANK3, RANK7};
 use crate::types::square::{Square, SQUARES, SQUARES_REV};
-use crate::statics::Lookups;
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter};
-use crate::errors::BoardError;
-use crate::types::castling_rights::CastlingRights;
-use crate::types::r#move::{MoveFlags, Move};
-use crate::types::ranks_and_files::{RANK3, RANK7};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -68,6 +68,8 @@ pub struct Board {
     zobrist_hash: u64, // Zobrist hash
     zobrist_history: Vec<u64>, // Zobrist history for repetition detection
 
+    moves_history: Vec<Move>,
+
     cached_legal_moves: Vec<Move>, // Legal moves for the current position
     cached_is_check: Option<bool>, // Is the current position a check
 
@@ -91,6 +93,7 @@ impl Default for Board {
             history_planes: VecDeque::with_capacity(7),
             zobrist_hash: 0,
             zobrist_history: Vec::new(),
+            moves_history: Vec::new(),
             cached_legal_moves: Vec::new(),
             cached_is_check: None,
             outcome: None,
@@ -114,6 +117,7 @@ impl Clone for Board {
             history_planes: self.history_planes.clone(),
             zobrist_hash: self.zobrist_hash,
             zobrist_history: self.zobrist_history.clone(),
+            moves_history: self.moves_history.clone(),
             cached_legal_moves: self.cached_legal_moves.clone(),
             cached_is_check: self.cached_is_check,
             outcome: None,
@@ -124,7 +128,7 @@ impl Clone for Board {
 
 impl Board {
     pub fn new(fen: Option<&str>) -> Board {
-        let fen = fen.unwrap_or_else(|| STARTING_POSITION);
+        let fen = fen.unwrap_or(STARTING_POSITION);
         match Self::try_from_fen(fen) {
             Ok(board) => board,
             Err(err) => panic!("{}", err),
@@ -257,7 +261,7 @@ impl Board {
         let mut combined_hash: u64 = self.zobrist_hash;
         for plane in self.history_planes.iter() {
             combined_hash ^= plane.zobrist_hash;
-        };
+        }
         combined_hash
     }
 
@@ -310,6 +314,10 @@ impl Board {
         }
         image.push(Bitboard(self.half_move_counter() as u64));
         (image, combined_hash)
+    }
+
+    pub fn moves_history(&self) -> &Vec<Move> {
+        self.moves_history.as_ref()
     }
 
     pub fn legal_moves(&mut self) -> Vec<Move> {
@@ -389,7 +397,10 @@ impl Board {
                         board.piece_count += 1;
                     }
                     Err(err) => {
-                        return Err(BoardError::InvalidFen(fen.to_string(), format!("{}: {}", err, c)));
+                        return Err(BoardError::InvalidFen(
+                            fen.to_string(),
+                            format!("{}: {}", err, c),
+                        ));
                     }
                 }
             }
@@ -397,7 +408,12 @@ impl Board {
         board.turn = match fen_parts[1] {
             "w" => WHITE,
             "b" => BLACK,
-            _ => return Err(BoardError::InvalidFen(fen.to_string(), format!("Invalid turn: {}", fen_parts[1]))),
+            _ => {
+                return Err(BoardError::InvalidFen(
+                    fen.to_string(),
+                    format!("Invalid turn: {}", fen_parts[1]),
+                ))
+            }
         };
         board.castling_rights = CastlingRights::from(fen_parts[2]);
         board.ep_sq = match fen_parts[3] {
@@ -407,7 +423,12 @@ impl Board {
                 let sq = Square::try_from(fen_parts[3]);
                 match sq {
                     Ok(sq) => Some(sq),
-                    Err(err) => return Err(BoardError::InvalidFen(fen.to_string(), format!("Invalid ep square: {}", err))),
+                    Err(err) => {
+                        return Err(BoardError::InvalidFen(
+                            fen.to_string(),
+                            format!("Invalid ep square: {}", err),
+                        ))
+                    }
                 }
             }
         };
@@ -460,11 +481,19 @@ impl Board {
         Ok(Move::new(from, to, flag))
     }
 
-    fn get_flag_from_uci(&self, from: Square, to: Square, promo: Option<char>) -> Result<MoveFlags, BoardError> {
+    fn get_flag_from_uci(
+        &self,
+        from: Square,
+        to: Square,
+        promo: Option<char>,
+    ) -> Result<MoveFlags, BoardError> {
         let moving_piece = match self.piece_at(from) {
             Some(piece) => piece,
             None => {
-                return Err(BoardError::InvalidMove(format!("No piece to move at {}", from)));
+                return Err(BoardError::InvalidMove(format!(
+                    "No piece to move at {}",
+                    from
+                )));
             }
         };
         let captured_piece: Option<Piece> = self.piece_at(to);
@@ -501,10 +530,14 @@ impl Board {
                     'r' => return Ok(MoveFlags::RookPromotionCapture),
                     'b' => return Ok(MoveFlags::BishopPromotionCapture),
                     'n' => return Ok(MoveFlags::KnightPromotionCapture),
-                    _ => return Err(BoardError::InvalidUci(format!("Invalid promotion piece: {}", p))),
+                    _ => {
+                        return Err(BoardError::InvalidUci(format!(
+                            "Invalid promotion piece: {}",
+                            p
+                        )))
+                    }
                 }
-            }
-            else {
+            } else {
                 return Ok(MoveFlags::Capture);
             }
         } else if to.rank_idx() == 0 || to.rank_idx() == 7 {
@@ -514,7 +547,12 @@ impl Board {
                     'r' => return Ok(MoveFlags::RookPromotion),
                     'b' => return Ok(MoveFlags::BishopPromotion),
                     'n' => return Ok(MoveFlags::KnightPromotion),
-                    _ => return Err(BoardError::InvalidUci(format!("Invalid promotion piece: {}", p))),
+                    _ => {
+                        return Err(BoardError::InvalidUci(format!(
+                            "Invalid promotion piece: {}",
+                            p
+                        )))
+                    }
                 }
             }
         }
@@ -534,7 +572,7 @@ impl Board {
             return false;
         }
         if self.piece_count() == 2 {
-            return true
+            return true;
         }
         if self.pieces_bb[Piece::Pawn as usize] != BB_EMPTY {
             // Detecting draws with pawns included is not as straight forward and requires more comlex logic
@@ -571,7 +609,7 @@ impl Board {
         };
         // Handle KNN vs K draw which is not detected with material counting
         if (white_knight_count - black_knight_count).abs() == 2 {
-            return true
+            return true;
         }
         false
     }
@@ -613,17 +651,25 @@ impl Board {
     }
 
     #[inline(always)]
-    fn move_piece_and_capture(&mut self, from: Square, to: Square, color: Color) -> Result<(), BoardError> {
+    fn move_piece_and_capture(
+        &mut self,
+        from: Square,
+        to: Square,
+        color: Color,
+    ) -> Result<(), BoardError> {
         // Check if there is a piece to capture before clearing the capturing piece
         if self.piece_at(to).is_none() {
-            return Err(BoardError::InvalidMove(format!("No piece to capture at {}", to)));
+            return Err(BoardError::InvalidMove(format!(
+                "No piece to capture at {}",
+                to
+            )));
         };
         let moved_piece = self.clear_piece_at(from, color)?;
         self.clear_piece_at(to, !color)?; // Should never return error because of the if statement above
         self.put_piece_at(to, moved_piece, color);
         Ok(())
     }
-    
+
     #[inline(always)]
     fn put_piece_at(&mut self, square: Square, piece: Piece, color: Color) {
         self.pieces_list[square as usize] = Some(piece);
@@ -637,7 +683,12 @@ impl Board {
         // Return error if there is no piece to clear
         let piece = match self.pieces_list[square as usize] {
             Some(piece) => piece,
-            None => return Err(BoardError::InvalidMove(format!("No piece to clear from {}", square))),
+            None => {
+                return Err(BoardError::InvalidMove(format!(
+                    "No piece to clear from {}",
+                    square
+                )))
+            }
         };
         self.pieces_list[square as usize] = None;
         self.pieces_bb[piece] &= !BB_SQUARES[square as usize];
@@ -1003,7 +1054,11 @@ impl Board {
             moves.push(Move::new(sq - NORTH * player, sq, MoveFlags::QuietMove));
         }
         for sq in double_pushes {
-            moves.push(Move::new(sq - NORTH2X * player, sq, MoveFlags::DoublePawnPush));
+            moves.push(Move::new(
+                sq - NORTH2X * player,
+                sq,
+                MoveFlags::DoublePawnPush,
+            ));
         }
 
         // Pawn captures
@@ -1021,10 +1076,22 @@ impl Board {
         if tmp != BB_EMPTY {
             // Quiet promotions
             for sq in Bitboard::shift(tmp, NORTH & player) & quiet_mask {
-                moves.push(Move::new(sq - NORTH * player, sq, MoveFlags::KnightPromotion));
-                moves.push(Move::new(sq - NORTH * player, sq, MoveFlags::BishopPromotion));
+                moves.push(Move::new(
+                    sq - NORTH * player,
+                    sq,
+                    MoveFlags::KnightPromotion,
+                ));
+                moves.push(Move::new(
+                    sq - NORTH * player,
+                    sq,
+                    MoveFlags::BishopPromotion,
+                ));
                 moves.push(Move::new(sq - NORTH * player, sq, MoveFlags::RookPromotion));
-                moves.push(Move::new(sq - NORTH * player, sq, MoveFlags::QueenPromotion));
+                moves.push(Move::new(
+                    sq - NORTH * player,
+                    sq,
+                    MoveFlags::QueenPromotion,
+                ));
             }
             // Capturing promotions
             for sq in Bitboard::shift(tmp, NORTH_WEST & player) & capture_mask {
@@ -1082,7 +1149,8 @@ impl Board {
         match m.flags() {
             MoveFlags::QuietMove => {
                 self.move_piece(m.sq_from(), m.sq_to(), self.turn)?;
-                if self.piece_at(m.sq_to()).unwrap() == Piece::Pawn { // Unwrap is safe because we know there is a piece at the square
+                if self.piece_at(m.sq_to()).unwrap() == Piece::Pawn {
+                    // Unwrap is safe because we know there is a piece at the square
                     self.half_move_counter = 0;
                 } else {
                     self.half_move_counter += 1;
@@ -1180,6 +1248,7 @@ impl Board {
         }
         self.turn = !self.turn;
         self.ply += 1;
+        self.moves_history.push(*m);
         self.clear_cache();
         Ok(())
     }
@@ -1322,7 +1391,9 @@ mod board_tests {
 
     #[test]
     fn test_board_from_valid_fen() {
-        let board = Board::new(Some("r4rk1/pppnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/1R2K2R b K - 10 9"));
+        let board = Board::new(Some(
+            "r4rk1/pppnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/1R2K2R b K - 10 9",
+        ));
         assert_eq!(board.turn(), BLACK);
         assert_eq!(board.castling_rights(), "K");
         assert_eq!(board.half_move_counter(), 10);
@@ -1331,9 +1402,13 @@ mod board_tests {
         assert_eq!(board.piece_count(), 32);
     }
     #[test]
-    #[should_panic(expected = "invalid FEN string: r3k2r/ppFnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8 (Invalid piece string: F)")]
+    #[should_panic(
+        expected = "invalid FEN string: r3k2r/ppFnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8 (Invalid piece string: F)"
+    )]
     fn test_board_from_invalid_fen() {
-        let _board = Board::new(Some("r3k2r/ppFnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8"));
+        let _board = Board::new(Some(
+            "r3k2r/ppFnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8",
+        ));
     }
 
     #[test]
@@ -1353,7 +1428,9 @@ mod board_tests {
     fn test_board_halfmoves_incr() {
         // Non capturing piece moves should increment half move counter
         // Castling and moves that lose castling right also increment half move counter
-        let mut board = Board::new(Some("r3k2r/pppnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8"));
+        let mut board = Board::new(Some(
+            "r3k2r/pppnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8",
+        ));
         assert_eq!(board.half_move_counter(), 8);
         assert_eq!(board.piece_count(), 32);
         board.push_uci("f6h5").unwrap(); // Non capturing knight move
@@ -1371,7 +1448,9 @@ mod board_tests {
     fn test_board_halfmoves_reset() {
         // Capturing piece moves should reset half move counter to 0
         // Pawn moves including promotions should reset half move counter to 0
-        let board = Board::new(Some("r3k2r/pppnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8"));
+        let board = Board::new(Some(
+            "r3k2r/pppnqppp/5n2/2bpp3/3PP1b1/2PBBN2/PPQN1PPP/R3K2R b KQkq - 8 8",
+        ));
         assert_eq!(board.half_move_counter(), 8);
         assert_eq!(board.piece_count(), 32);
         let mut tmp_board = board.clone();
@@ -1434,43 +1513,95 @@ mod board_tests {
     fn test_board_insufficient_material() {
         // King vs king
         let board = Board::new(Some("8/8/4k3/8/4K3/8/8/8 w - - 0 1"));
-        assert_eq!(board.draw_by_insufficient_material(), true, "K vs K should be draw by insufficient material");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            true,
+            "K vs K should be draw by insufficient material"
+        );
         // King vs king + knight
         let board = Board::new(Some("8/8/4k3/8/2N1K3/8/8/8 w - - 0 1"));
-        assert_eq!(board.draw_by_insufficient_material(), true, "K vs K+N should be draw by insufficient material");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            true,
+            "K vs K+N should be draw by insufficient material"
+        );
         // King vs king + bishop
         let board = Board::new(Some("8/8/4k3/8/2B1K3/8/8/8 w - - 0 1"));
-        assert_eq!(board.draw_by_insufficient_material(), true, "K vs K+B should be draw by insufficient material");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            true,
+            "K vs K+B should be draw by insufficient material"
+        );
         // King vs king + two knights
         let board = Board::new(Some("8/8/4k3/7N/2N1K3/8/8/8 w - - 0 1"));
-        assert_eq!(board.draw_by_insufficient_material(), true, "K vs KNN should be draw by insufficient material");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            true,
+            "K vs KNN should be draw by insufficient material"
+        );
         // King + knight vs King + bishop
         let board = Board::new(Some("8/6b1/4k3/8/2N1K3/8/8/8 w - - 0 1"));
-        assert_eq!(board.draw_by_insufficient_material(), true, "K+N vs K+B should be draw by insufficient material");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            true,
+            "K+N vs K+B should be draw by insufficient material"
+        );
         // King + knight vs King + knight
         let board = Board::new(Some("8/6n1/4k3/8/2N1K3/8/8/8 w - - 0 1"));
-        assert_eq!(board.draw_by_insufficient_material(), true, "K+N vs K+N should be draw by insufficient material");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            true,
+            "K+N vs K+N should be draw by insufficient material"
+        );
         // King + two knights vs King + knight
         let board = Board::new(Some("8/6n1/4k3/8/2N1K1N1/8/8/8 w - - 0 1"));
-        assert_eq!(board.draw_by_insufficient_material(), true, "KNN vs KN should be draw by insufficient material");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            true,
+            "KNN vs KN should be draw by insufficient material"
+        );
         // King + two knights vs King + bishop
         let board = Board::new(Some("8/6b1/4k3/8/2N1K1N1/8/8/8 w - - 0 1"));
-        assert_eq!(board.draw_by_insufficient_material(), true, "KNN vs KB should be draw by insufficient material");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            true,
+            "KNN vs KB should be draw by insufficient material"
+        );
         // King + two bishop vs King + bishop
         let board = Board::new(Some("8/6b1/4k3/8/2B1K1B1/8/8/8 w - - 0 1"));
-        assert_eq!(board.draw_by_insufficient_material(), true, "KBB vs KB should be draw by insufficient material");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            true,
+            "KBB vs KB should be draw by insufficient material"
+        );
         // King + two bishop vs King + knight (not draw by insufficient material)
         let board = Board::new(Some("8/6n1/4k3/8/2B1K1B1/8/8/8 w - - 0 1"));
-        assert_eq!(board.draw_by_insufficient_material(), true, "KBB vs KN shoul be draw by insufficient material (according to chess.com)");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            true,
+            "KBB vs KN shoul be draw by insufficient material (according to chess.com)"
+        );
         // King + knight & bishop vs King (not draw by insufficient material)
         let board = Board::new(Some("8/8/4k3/8/2B1K1N1/8/8/8 w - - 0 1"));
-        assert_eq!(board.draw_by_insufficient_material(), false, "KBN vs K should not be draw by insufficient material");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            false,
+            "KBN vs K should not be draw by insufficient material"
+        );
         // King + queen vs King + queen
         let board = Board::new(Some("8/4k1q1/8/3Q4/4K3/8/8/8 b - - 1 1"));
-        assert_eq!(board.draw_by_insufficient_material(), true, "KQ vs KQ should be draww by insufficient material");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            true,
+            "KQ vs KQ should be draww by insufficient material"
+        );
         // King + two rooks vs King + bishop & knight
         let board = Board::new(Some("6nb/4k3/8/8/4K3/3RR3/8/8 b - - 1 1"));
-        assert_eq!(board.draw_by_insufficient_material(), false, "KRR vs KBN should not be draw by insufficient material (rooks win)");
+        assert_eq!(
+            board.draw_by_insufficient_material(),
+            false,
+            "KRR vs KBN should not be draw by insufficient material (rooks win)"
+        );
     }
 }
 
@@ -1507,7 +1638,7 @@ mod image_tests {
                 assert_ne!(image[j], BB_EMPTY);
             }
         }
-        for i in (13*3)..(13 * 8) {
+        for i in (13 * 3)..(13 * 8) {
             assert_eq!(image[i], BB_EMPTY);
         }
         for i in (13 * 8)..(13 * 8 + 4) {
@@ -1530,7 +1661,7 @@ mod image_tests {
                 assert_ne!(image[j], BB_EMPTY);
             }
         }
-        for i in (13*3)..(13 * 8) {
+        for i in (13 * 3)..(13 * 8) {
             assert_eq!(image[i], BB_EMPTY);
         }
         for i in (13 * 8)..(13 * 8 + 4) {

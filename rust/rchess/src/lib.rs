@@ -9,8 +9,12 @@ use pyo3::prelude::*;
 
 #[pymodule]
 mod _lib {
+    use std::collections::hash_map;
+    use std::sync::RwLock;
+
     use crate::board;
     use crate::types::color;
+    use crate::types::r#move;
     use pyo3::prelude::*;
 
     #[pyclass]
@@ -28,7 +32,7 @@ mod _lib {
             }
         }
 
-        fn to_string(&self) -> String {
+        fn __repr__(&self) -> String {
             format!("{}", self.board)
         }
 
@@ -39,8 +43,44 @@ mod _lib {
             Ok(())
         }
 
-        fn legal_moves(&mut self) -> Vec<String> {
+        fn push_num(&mut self, num: u16) -> PyResult<()> {
+            let m = r#move::Move(num);
+            if let Err(err) = self.board.push(&m) {
+                panic!("{}", err)
+            };
+            Ok(())
+        }
+
+        fn push(&mut self, m: Move) -> PyResult<()> {
+            if let Err(err) = self.board.push(&m.r#move) {
+                panic!("{}", err)
+            };
+            Ok(())
+        }
+
+        #[pyo3(signature = (take=None))]
+        fn moves_history(&self, take: Option<usize>) -> Vec<u16> {
+            let take = take.unwrap_or(usize::MAX);
+            self.board
+                .moves_history()
+                .iter()
+                .rev()
+                .take(take)
+                .map(|m| m.0)
+                .rev()
+                .collect()
+        }
+
+        fn legal_moves_uci(&mut self) -> Vec<String> {
             self.board.legal_moves().iter().map(|m| m.uci()).collect()
+        }
+
+        fn legal_moves(&mut self) -> Vec<Move> {
+            self.board
+                .legal_moves()
+                .iter()
+                .map(|m| Move { r#move: *m })
+                .collect()
         }
 
         fn history_hash(&self) -> u64 {
@@ -93,8 +133,60 @@ mod _lib {
         }
     }
 
-    #[pyfunction]
-    fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
-        Ok((a + b).to_string())
+    #[pyclass]
+    #[derive(Clone)]
+    struct Move {
+        r#move: r#move::Move,
+    }
+
+    #[pymethods]
+    impl Move {
+        #[new]
+        fn new(num: u16) -> Self {
+            Self {
+                r#move: r#move::Move(num),
+            }
+        }
+
+        fn __repr__(&self) -> String {
+            format!("{}", self.r#move)
+        }
+
+        fn __hash__(&self) -> u64 {
+            self.r#move.0 as u64
+        }
+
+        fn uci(&self) -> String {
+            self.r#move.uci()
+        }
+    }
+
+    #[pyclass]
+    struct Cache {
+        //store: hash_map::HashMap<u64, Vec<u16>>
+        //store safe for threading
+        store: hash_map::HashMap<u64, u64>,
+        lock: RwLock<()>,
+    }
+
+    #[pymethods]
+    impl Cache {
+        #[new]
+        fn new() -> Self {
+            Self {
+                store: hash_map::HashMap::new(),
+                lock: RwLock::new(()),
+            }
+        }
+
+        fn get(&self, key: u64) -> Option<u64> {
+            let _lock = self.lock.read().unwrap();
+            self.store.get(&key).copied()
+        }
+
+        fn set(&mut self, key: u64, value: u64) {
+            let _lock = self.lock.write().unwrap();
+            self.store.insert(key, value);
+        }
     }
 }
