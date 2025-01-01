@@ -75,6 +75,10 @@ mod _lib {
             self.board.legal_moves().iter().map(|m| m.uci()).collect()
         }
 
+        fn legal_moves_num(&mut self) -> Vec<u16> {
+            self.board.legal_moves().iter().map(|m| m.0).collect()
+        }
+
         fn legal_moves(&mut self) -> Vec<Move> {
             self.board
                 .legal_moves()
