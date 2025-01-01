@@ -1,12 +1,12 @@
 #cython: profile=True, language_level=3
 from actionspace import map_w, map_b
 from configs import selfplayConfig
-from libc.math cimport log, sqrt
 from rchess import Move
 from model import predict_fn
 import numpy as np
 cimport numpy as cnp
 cimport cython
+from libc.math cimport log, sqrt
 
 cnp.import_array()
 
@@ -22,13 +22,13 @@ cdef class Node:
         self.children = {}
         self.to_play = False
 
-    """def __init__(self):
+    def __init__(self):
         self.P = 0.0
         self.W = 0.0
         self.N = 0
         self.vloss = 0
         self.children = {}
-        self.to_play = False"""
+        self.to_play = False
 
     def __getitem__(self, move: int):
         return self.children[move]
@@ -132,8 +132,7 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
 
             nodes_found += 1
             nodes_to_eval.append(node)
-            moves_to_node = tmp_board.moves_history(tmp_board.ply() - board.ply())
-            moves_to_nodes.append(moves_to_node)
+            moves_to_nodes.append(tmp_board.moves_history(tmp_board.ply() - board.ply()))
             eval_nodes_legal_moves.append(tmp_board.legal_moves_uci())
             history, _ = tmp_board.history(history_flip)
             histories.append(history)
@@ -214,16 +213,12 @@ cdef unsigned int select_child(Node node, unsigned int pb_c_base, float pb_c_ini
     
     return bestmove 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 @cython.cdivision(True)
-cdef inline float UCB(unsigned int cN, float cW, float cP, float pN_sqrt, float pb_c):
+cdef inline float UCB(unsigned int cN, float cW, float cP, float pN_sqrt, float pb_c) noexcept:
     return (cW / cN) + pb_c * cP * pN_sqrt / (cN + 1)
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
 @cython.cdivision(True)
-cdef inline float PB_C(unsigned int N, unsigned int pb_c_base, float pb_c_init, float pb_c_factor):
+cdef inline float PB_C(unsigned int N, unsigned int pb_c_base, float pb_c_init, float pb_c_factor) noexcept:
     return log((N + pb_c_base + 1) / pb_c_base) * pb_c_factor + pb_c_init
 
 cdef void evaluate_node(Node node, cnp.ndarray[DTYPE_t, ndim=1] policy_logits, list legal_moves_uci):
@@ -253,7 +248,6 @@ cdef cnp.ndarray calculate_search_statistics(Node root, unsigned int num_actions
     cdef unsigned int move_num
     cdef object move
     cdef Node child
-    cdef object m
     cdef Py_ssize_t i
 
     for move_num, child in root.children.items():
@@ -263,10 +257,10 @@ cdef cnp.ndarray calculate_search_statistics(Node root, unsigned int num_actions
     return child_visits / np.sum(child_visits)
 
 @cython.cdivision(True)
-cdef inline float value_to_01(float value):
+cdef inline float value_to_01(float value) noexcept:
     return (value + 1.0) / 2.0
 
-cdef inline float flip_value(float value):
+cdef inline float flip_value(float value) noexcept:
     return 1.0 - value
 
 cdef void update(Node root, list moves_to_leaf, float value):
