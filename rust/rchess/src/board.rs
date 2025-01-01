@@ -320,7 +320,7 @@ impl Board {
         self.moves_history.as_ref()
     }
 
-    pub fn legal_moves(&mut self) -> Vec<Move> {
+    pub fn legal_moves(&mut self) -> &Vec<Move> {
         // Always call this method to get legal moves, never legal_moves directly
         if self.cached_legal_moves.is_empty() {
             // A way to cache legal moves for a position
@@ -328,7 +328,7 @@ impl Board {
             self.cached_legal_moves = moves;
             self.cached_is_check = Some(is_check);
         }
-        self.cached_legal_moves.clone()
+        self.cached_legal_moves.as_ref()
     }
 
     pub fn terminal(&mut self) -> (bool, Option<Color>) {
@@ -780,7 +780,7 @@ impl Board {
     }
 
     // Following the steps of: https://peterellisjones.com/posts/generating-legal-chess-moves-efficiently/
-    fn generate_legal_moves(&self) -> (Vec<Move>, bool) {
+    pub fn generate_legal_moves(&self) -> (Vec<Move>, bool) {
         let mut moves: Vec<Move> = Vec::new();
         let mut is_check: bool = false;
 

@@ -1,4 +1,4 @@
-use crate::types::square::Square;
+use crate::types::square::{Square, SQUARES_STR};
 use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
@@ -98,7 +98,11 @@ impl Move {
             MoveFlags::QueenPromotion | MoveFlags::QueenPromotionCapture => "q",
             _ => "",
         };
-        format!("{:?}{:?}{}", self.sq_from(), self.sq_to(), promotion).to_lowercase()
+        let mut str = String::with_capacity(5);
+        str.push_str(SQUARES_STR[self.sq_from() as usize]);
+        str.push_str(SQUARES_STR[self.sq_to() as usize]);
+        str.push_str(promotion);
+        str
     }
 }
 
