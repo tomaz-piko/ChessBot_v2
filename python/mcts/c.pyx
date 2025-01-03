@@ -23,6 +23,7 @@ cdef class Node:
         self.to_play = False
 
     def __init__(self):
+        print('Py Node __init__')
         self.P = 0.0
         self.W = 0.0
         self.N = 0
@@ -175,7 +176,7 @@ cdef select_best_move(Node node, object rng, float temp):
         return rng.choice(moves, p=probs)
 
 cdef make_predictions(object trt_func, list histories, unsigned int batch_size):
-    cdef images = np.array(histories, dtype=np.int64)
+    cdef cnp.ndarray images = np.array(histories, dtype=np.int64)
     if images.shape[0] < batch_size:
         images = np.pad(images, ((0, batch_size - images.shape[0]), (0, 0)), mode='constant')
 
