@@ -13,6 +13,9 @@ cnp.import_array()
 DTYPE = np.float32
 ctypedef cnp.float32_t DTYPE_t
 
+BATCH_DTYPE = np.int64
+ctypedef cnp.int64_t BATCH_DTYPE_t
+
 cdef dict m_w = map_w
 cdef dict m_b = map_b
 
@@ -51,6 +54,8 @@ cdef class Node:
         self.vloss = 0
 
 @cython.boundscheck(False)
+@cython.nonecheck(False)
+@cython.wraparound(False)
 cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_mcts_sims):
     cdef dict config = selfplayConfig
     cdef bint root_exploration_noise = config['root_exploration_noise']
@@ -63,22 +68,23 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
     cdef float pb_c_factor = config['pb_c_factor']
     cdef unsigned int num_vl_searches = config['num_vl_searches']
     cdef bint history_flip = config['history_perspective_flip']
+    cdef int num_history_planes = 109
     cdef object rng = np.random.default_rng()
     cdef bint tree_reused = True
     cdef unsigned int move_num
     cdef list nodes_to_eval
-    cdef list moves_to_node
     cdef list moves_to_nodes
-    cdef list histories
     cdef unsigned int failsafe
     cdef unsigned int nodes_found
     cdef object tmp_board
     cdef float fpu
-    cdef bint terminal
-    cdef bint winner
+    cdef bint terminal, winner
     cdef cnp.ndarray[DTYPE_t, ndim=2] values
     cdef cnp.ndarray[DTYPE_t, ndim=2] policy_logits
     cdef cnp.ndarray[DTYPE_t, ndim=1] child_visits
+    cdef cnp.ndarray[BATCH_DTYPE_t, ndim=2] batch = np.zeros((num_vl_searches, num_history_planes), dtype=BATCH_DTYPE)
+    cdef long[:, :] batch_mw = batch
+    cdef list history
     cdef Py_ssize_t idx
     cdef Node node
     cdef unsigned int depth
@@ -91,10 +97,11 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
 
     if root.is_leaf():
         history, _ = board.history(history_flip)
+        for idx in range(num_history_planes):
+            batch_mw[0, idx] = history[idx]
         _, policy_logits = make_predictions(
                 trt_func=trt_func,
-                histories=[history],
-                batch_size=num_vl_searches
+                batch=batch
             )
         evaluate_node(root, policy_logits[0], board.legal_moves())
 
@@ -109,9 +116,8 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
         nodes_to_eval = []
         eval_nodes_legal_moves = []
         moves_to_nodes = []
-        histories = []
         failsafe = 0
-        while nodes_found < nodes_to_find and failsafe < 4:
+        while nodes_found < nodes_to_find and failsafe < 2:
             depth = 0
             node = root
             tmp_board = board.clone()
@@ -123,22 +129,22 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
                 tmp_board.push_num(move_num)
                 depth += 1
             
-            terminal, winner = tmp_board.terminal()
+            terminal, is_drawn = tmp_board.terminal()
             if terminal:
-                value = 1.0 if winner is not None else 0.0
-                moves_to_node = tmp_board.moves_history(tmp_board.ply() - depth + 1)
-                update(root, moves_to_node, flip_value(value))
+                value = 0.5 if is_drawn else 1.0
+                update(root, tmp_board.moves_history(tmp_board.ply() - depth), flip_value(value))
                 failsafe += 1
                 continue
 
             node.to_play = tmp_board.to_play()
 
-            nodes_found += 1
             nodes_to_eval.append(node)
-            moves_to_nodes.append(tmp_board.moves_history(tmp_board.ply() - depth + 1))
+            moves_to_nodes.append(tmp_board.moves_history(tmp_board.ply() - depth))
             eval_nodes_legal_moves.append(tmp_board.legal_moves())
             history, _ = tmp_board.history(history_flip)
-            histories.append(history)
+            for idx in range(num_history_planes):
+                batch_mw[nodes_found, idx] = history[idx]
+            nodes_found += 1
 
         if nodes_found == 0:
             failsafe += 1
@@ -146,49 +152,55 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
 
         values, policy_logits = make_predictions(
                 trt_func=trt_func,
-                histories=histories,
-                batch_size=num_vl_searches
+                batch=batch
             )
         
-        for idx in range(len(nodes_to_eval)):
+        for idx in range(nodes_found):
             evaluate_node(nodes_to_eval[idx], policy_logits[idx], eval_nodes_legal_moves[idx])
             update(root, moves_to_nodes[idx], flip_value(value_to_01(values[idx].item())))
-        del nodes_to_eval, values, policy_logits, moves_to_nodes, histories
 
     move_num = select_best_move(root, rng, temp=0)
     child_visits = calculate_search_statistics(root, 1858)
     return move_num, root, child_visits
 
-cdef add_exploration_noise(Node node, object rng, float dirichlet_alpha, float exploration_fraction):
-    cdef cnp.ndarray noise = rng.dirichlet([dirichlet_alpha] * len(node.children))
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.nonecheck(False)
+cdef void add_exploration_noise(Node node, object rng, float dirichlet_alpha, float exploration_fraction):
+    cdef cnp.ndarray[DTYPE_t, ndim=1] noise = rng.dirichlet([dirichlet_alpha] * len(node.children)).astype(DTYPE)
+    cdef float[:] noise_mw = noise
+    cdef unsigned int noise_size = noise.shape[0]
     cdef Node child
     cdef float n
-    noise /= np.sum(noise)
-    for n, child in zip(noise, node.children.values()):
-        child.P = child.P * (1 - exploration_fraction) + n * exploration_fraction
+    cdef Py_ssize_t i
+    cdef DTYPE_t sum_noise = 0.0
+    
+    for i in range(noise_size):
+        sum_noise += noise_mw[i]
 
-cdef select_best_move(Node node, object rng, float temp):
-    cdef list moves = list(node.children.keys())
-    cdef cnp.ndarray probs = np.array([node[move].N for move in moves])
-    if temp == 0:
-        return moves[np.argmax(probs)]
-    else:
-        probs = np.power(probs, 1.0 / temp)
-        probs /= np.sum(probs)
-        return rng.choice(moves, p=probs)
+    i = 0
+    for child in node.children.values():
+        child.P = child.P * (1 - exploration_fraction) + noise_mw[i] * exploration_fraction
+        i += 1
 
-cdef make_predictions(object trt_func, list histories, unsigned int batch_size):
-    cdef cnp.ndarray images = np.array(histories, dtype=np.int64)
-    if images.shape[0] < batch_size:
-        images = np.pad(images, ((0, batch_size - images.shape[0]), (0, 0)), mode='constant')
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.nonecheck(False)
+cdef make_predictions(object trt_func, cnp.ndarray[BATCH_DTYPE_t, ndim=2] batch):
+    cdef cnp.ndarray[DTYPE_t, ndim=2] values, policy_logits
+    cdef object values_tf, policy_logits_tf
 
-    values, policy_logits = predict_fn(
+    values_tf, policy_logits_tf = predict_fn(
         trt_func=trt_func,
-        images=images
+        images=batch
     )
 
-    return np.array(values, dtype=DTYPE), np.array(policy_logits, dtype=DTYPE)
+    values = np.array(values_tf, dtype=DTYPE)
+    policy_logits = np.array(policy_logits_tf, dtype=DTYPE)
+    return values, policy_logits
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
 cdef unsigned int select_child(Node node, unsigned int pb_c_base, float pb_c_init, float pb_c_factor, float fpu):
     cdef Node child
     cdef unsigned int move
@@ -233,15 +245,14 @@ cdef void evaluate_node(Node node, float[:] policy_logits, list legal_moves):
     cdef object move_obj
     cdef str move_uci
     cdef Py_ssize_t moves_count = len(legal_moves)
-    cdef Py_ssize_t i, p_idx
     cdef cnp.ndarray[DTYPE_t, ndim=1] policy = np.zeros(moves_count, dtype=DTYPE)
     cdef float[:] policy_mw = policy
     cdef float p, logsumexp
     cdef float _max = -99.9
     cdef float expsum = 0.0
     cdef Node child
+    cdef Py_ssize_t i, p_idx
     
-    i = 0
     for i in range(moves_count):
         move_uci = legal_moves[i].uci()
         p_idx = m[move_uci]
@@ -250,28 +261,34 @@ cdef void evaluate_node(Node node, float[:] policy_logits, list legal_moves):
         if p > _max:
             _max = p
 
-    i = 0
     for i in range(moves_count):
         expsum += exp(policy_mw[i] - _max)
 
-    i = 0
     logsumexp = log(expsum) + _max
     for i in range(moves_count):
         move_obj = legal_moves[i]
-        node.add_child(hash(move_obj), exp(policy[i] - logsumexp))
+        node.add_child(hash(move_obj), exp(policy_mw[i] - logsumexp))
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.nonecheck(False)
 cdef cnp.ndarray calculate_search_statistics(Node root, unsigned int num_actions):
-    cdef cnp.ndarray child_visits = np.zeros(num_actions, dtype=DTYPE)
-    cdef unsigned int move_num
-    cdef object move
+    cdef cnp.ndarray[DTYPE_t, ndim=1] child_visits = np.zeros(num_actions, dtype=DTYPE)
+    cdef dict m = m_w if root.to_play else m_b
+    cdef float[:] child_visits_mw = child_visits
+    cdef unsigned int move_num, _sum, cN
+    cdef object move_str
     cdef Node child
     cdef Py_ssize_t i
 
+    _sum = 0
     for move_num, child in root.children.items():
-        move = Move(move_num)
-        i = map_w[move.uci()] if root.to_play else map_b[move.uci()]
-        child_visits[i] = child.N
-    return child_visits / np.sum(child_visits)
+        cN = child.N
+        move_str = Move(move_num).uci()
+        i = m[move_str]
+        child_visits_mw[i] = cN
+        _sum += cN
+    return child_visits / _sum
 
 @cython.cdivision(True)
 cdef inline float value_to_01(float value) noexcept:
@@ -289,3 +306,14 @@ cdef void update(Node root, list moves_to_leaf, float value):
     node.remove_vloss()
     node.N += 1
     node.W += flip_value(value)
+
+
+cdef select_best_move(Node node, object rng, float temp):
+    cdef list moves = list(node.children.keys())
+    cdef cnp.ndarray probs = np.array([node[move].N for move in moves])
+    if temp == 0:
+        return moves[np.argmax(probs)]
+    else:
+        probs = np.power(probs, 1.0 / temp)
+        probs /= np.sum(probs)
+        return rng.choice(moves, p=probs)

@@ -119,9 +119,9 @@ mod _lib {
             }
         }
 
-        fn terminal(&mut self) -> (bool, Option<bool>) {
+        fn terminal(&mut self) -> (bool, bool) {
             let (is_terminal, winner) = self.board.terminal();
-            (is_terminal, winner.map(|c| c == color::Color::White))
+            (is_terminal, winner.is_none())
         }
 
         fn to_play(&self) -> bool {
