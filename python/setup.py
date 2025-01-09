@@ -4,7 +4,7 @@ import numpy
 
 extensions = [
     Extension(
-        "mcts.c",
+        "python.mcts.c",
         sources=["python/mcts/c.pyx"],
         include_dirs=[numpy.get_include()]
     ),

@@ -1,4 +1,5 @@
 import numpy as np
+import tensorflow as tf
 
 def convert_u64_to_np(images: list) -> np.array:
     """Converts a list or a batch of lists containing u64 integers, to a numpy array.
@@ -27,3 +28,13 @@ def convert_u64_to_np(images: list) -> np.array:
     h = (np.ones((batch_size, 1, 8, 8)) * h[:, np.newaxis, np.newaxis, np.newaxis]) / 100.0
     x = np.concatenate([x, h], axis=1).astype(np.float32)
     return x
+
+class FakeTRTFunc:
+    def __call__(self, images):
+        if isinstance(images, np.ndarray):
+            images = tf.convert_to_tensor(images)
+        
+        batch_size = tf.shape(images)[0]
+        policy_logits = tf.random.uniform((batch_size, 1858), dtype=tf.float32)
+        value = tf.random.uniform((batch_size, 1), dtype=tf.float32)
+        return {"policy_head": policy_logits, "value_head": value}
