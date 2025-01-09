@@ -320,7 +320,7 @@ impl Board {
         self.moves_history.as_ref()
     }
 
-    pub fn legal_moves(&mut self) -> Vec<Move> {
+    pub fn legal_moves(&mut self) -> &Vec<Move> {
         // Always call this method to get legal moves, never legal_moves directly
         if self.cached_legal_moves.is_empty() {
             // A way to cache legal moves for a position
@@ -328,7 +328,7 @@ impl Board {
             self.cached_legal_moves = moves;
             self.cached_is_check = Some(is_check);
         }
-        self.cached_legal_moves.clone()
+        self.cached_legal_moves.as_ref()
     }
 
     pub fn terminal(&mut self) -> (bool, Option<Color>) {
@@ -353,6 +353,43 @@ impl Board {
             return (true, None);
         }
         (false, None)
+    }
+
+    // Mid search terminal is used during mcts
+    // If a position is replayed after the root of the search tree
+    // we assume it is a draw by threefold repetition
+    pub fn mid_search_terminal(&mut self, depth_to_root: usize) -> (bool, bool) {
+        if self.checkmate() {
+            return (true, false);
+        }
+        if self.stalemate() {
+            return (true, true);
+        }
+        if self.draw_by_insufficient_material() {
+            return (true, true);
+        }
+        if self.draw_by_50move_rule() {
+            return (true, true);
+        }
+        let mut repetitions: u8 = 1;
+        for (i, &zh) in self
+            .zobrist_history
+            .iter()
+            .rev()
+            .take(self.half_move_counter() as usize)
+            .enumerate()
+        {
+            if zh == self.zobrist_hash {
+                repetitions += 1;
+                if i < depth_to_root {
+                    return (true, true);
+                }
+            }
+            if repetitions >= 3 {
+                return (true, true);
+            }
+        }
+        (false, false)
     }
 
     pub fn outcome(&self) -> Option<Outcome> {
@@ -620,18 +657,19 @@ impl Board {
 
     fn count_repetitions(&self, max: u8) -> u8 {
         let mut repetitions: u8 = 1;
-        self.zobrist_history
+        for &hash in self
+            .zobrist_history
             .iter()
             .rev()
             .take(self.half_move_counter() as usize)
-            .for_each(|&hash| {
-                if hash == self.zobrist_hash {
-                    repetitions += 1;
-                }
-                if repetitions >= max {
-                    return;
-                }
-            });
+        {
+            if hash == self.zobrist_hash {
+                repetitions += 1;
+            }
+            if repetitions >= max {
+                return repetitions;
+            }
+        }
         repetitions
     }
 
@@ -780,7 +818,7 @@ impl Board {
     }
 
     // Following the steps of: https://peterellisjones.com/posts/generating-legal-chess-moves-efficiently/
-    fn generate_legal_moves(&self) -> (Vec<Move>, bool) {
+    pub fn generate_legal_moves(&self) -> (Vec<Move>, bool) {
         let mut moves: Vec<Move> = Vec::new();
         let mut is_check: bool = false;
 
