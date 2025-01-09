@@ -355,6 +355,43 @@ impl Board {
         (false, None)
     }
 
+    // Mid search terminal is used during mcts
+    // If a position is replayed after the root of the search tree
+    // we assume it is a draw by threefold repetition
+    pub fn mid_search_terminal(&mut self, depth_to_root: usize) -> (bool, bool) {
+        if self.checkmate() {
+            return (true, false);
+        }
+        if self.stalemate() {
+            return (true, true);
+        }
+        if self.draw_by_insufficient_material() {
+            return (true, true);
+        }
+        if self.draw_by_50move_rule() {
+            return (true, true);
+        }
+        let mut repetitions: u8 = 1;
+        for (i, &zh) in self
+            .zobrist_history
+            .iter()
+            .rev()
+            .take(self.half_move_counter() as usize)
+            .enumerate()
+        {
+            if zh == self.zobrist_hash {
+                repetitions += 1;
+                if i < depth_to_root {
+                    return (true, true);
+                }
+            }
+            if repetitions >= 3 {
+                return (true, true);
+            }
+        }
+        (false, false)
+    }
+
     pub fn outcome(&self) -> Option<Outcome> {
         self.outcome
     }
@@ -620,18 +657,19 @@ impl Board {
 
     fn count_repetitions(&self, max: u8) -> u8 {
         let mut repetitions: u8 = 1;
-        self.zobrist_history
+        for &hash in self
+            .zobrist_history
             .iter()
             .rev()
             .take(self.half_move_counter() as usize)
-            .for_each(|&hash| {
-                if hash == self.zobrist_hash {
-                    repetitions += 1;
-                }
-                if repetitions >= max {
-                    return;
-                }
-            });
+        {
+            if hash == self.zobrist_hash {
+                repetitions += 1;
+            }
+            if repetitions >= max {
+                return repetitions;
+            }
+        }
         repetitions
     }
 

@@ -79,6 +79,14 @@ mod _lib {
             self.board.legal_moves().iter().map(|m| m.0).collect()
         }
 
+        fn legal_moves_tuple(&mut self) -> Vec<(u16, String)> {
+            self.board
+                .legal_moves()
+                .iter()
+                .map(|m| (m.0, m.uci()))
+                .collect()
+        }
+
         fn legal_moves(&mut self) -> Vec<Move> {
             self.board
                 .legal_moves()
@@ -119,9 +127,13 @@ mod _lib {
             }
         }
 
-        fn terminal(&mut self) -> (bool, bool) {
+        fn terminal(&mut self) -> (bool, Option<bool>) {
             let (is_terminal, winner) = self.board.terminal();
-            (is_terminal, winner.is_none())
+            (is_terminal, winner.map(|c| c == color::Color::White))
+        }
+
+        fn mid_search_terminal(&mut self, depth_to_root: usize) -> (bool, bool) {
+            self.board.mid_search_terminal(depth_to_root)
         }
 
         fn to_play(&self) -> bool {
