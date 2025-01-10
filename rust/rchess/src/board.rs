@@ -455,7 +455,6 @@ impl Board {
         board.castling_rights = CastlingRights::from(fen_parts[2]);
         board.ep_sq = match fen_parts[3] {
             "-" => None,
-            //_ => Some(Square::try_from(fen_parts[3]).unwrap()),
             _ => {
                 let sq = Square::try_from(fen_parts[3]);
                 match sq {
@@ -1360,7 +1359,7 @@ impl Board {
             turn: self.turn,
             pieces: self.pieces_bb,
             occupancy: self.occupancy_bb,
-            repetition_count: self.count_repetitions(2), // TODO always need to count?
+            repetition_count: self.count_repetitions(2),
             zobrist_hash: self.zobrist_hash,
         }
     }

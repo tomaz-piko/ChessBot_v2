@@ -329,7 +329,7 @@ cdef inline void update(Node root, list moves_to_leaf, float value):
     cdef Node node = root
     cdef unsigned int move
     cdef int moves_count = len(moves_to_leaf)
-    if moves_count % 2 == 0:
+    if moves_count % 2 == 1:
         value = flip_value(value)
     for move in moves_to_leaf:
         node = node[move]
