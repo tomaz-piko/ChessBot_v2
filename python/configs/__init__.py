@@ -28,7 +28,7 @@ _floats = [
     "root_exploration_fraction",
     "fpu_root",
     "fpu_leaf",
-    "softmax_temp",
+    "moves_softmax_temp",
     "policy_temp",
     "pb_c_base",
     "pb_c_factor",

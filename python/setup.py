@@ -4,12 +4,12 @@ import numpy
 
 extensions = [
     Extension(
-        "python.mcts.c",
+        "mcts.c", # prepend "python." to the module name if needed
         sources=["python/mcts/c.pyx"],
         include_dirs=[numpy.get_include()]
     ),
     Extension(
-        "python.selfplay.c",
+        "selfplay.c", # prepend "python." to the module name if needed
         sources=["python/selfplay/c.pyx"],
         include_dirs=[numpy.get_include()]
     ),

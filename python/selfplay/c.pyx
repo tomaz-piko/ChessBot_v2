@@ -22,7 +22,7 @@ cpdef play_game(object trt_func, object tablebase, unsigned int verbose):
     cdef unsigned int moves_played = 0
     cdef list images = []
     cdef list statistics = []
-    cdef bint terminal, winner
+    cdef bint terminal
     cdef double start_time, end_time
     cdef str outcome_str = ""
 
@@ -73,6 +73,6 @@ cpdef play_game(object trt_func, object tablebase, unsigned int verbose):
             if winner is not None:
                 outcome_str = "White wins by checkmate" if winner == True else "Black wins by checkmate"
             else:
-                outcome_str = f"Draw by {board.outcome()}"
+                outcome_str = f"Draw by {board.outcome_str()}"
         print(f"{outcome_str} in {moves_played} moves in {end_time - start_time:.2f} seconds")
     return images_np, statistics, terminal_values

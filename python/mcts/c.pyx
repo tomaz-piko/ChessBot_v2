@@ -73,6 +73,7 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
     cdef float pb_c_factor = config['pb_c_factor']
     cdef unsigned int num_vl_searches = config['num_vl_searches']
     cdef bint history_flip = config['history_perspective_flip']
+    cdef float moves_softmax_temp = config['moves_softmax_temp']
     cdef int num_history_planes = 109
     cdef object rng = np.random.default_rng()
     cdef bint tree_reused = True
@@ -100,7 +101,7 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
 
     start_time = time.time()
 
-    if root is None:
+    if root is None or root.is_leaf():
         root = Node(0.0)
         tree_reused = False
 
@@ -179,7 +180,7 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
     end_time = time.time()
     if debug:
         root.debug_info["elapsed_time"] = end_time - start_time
-    move_num = select_best_move(root, rng, temp=0)
+    move_num = select_best_move(root, rng, temp=moves_softmax_temp if board.ply() <= config['num_mcts_sampling_moves'] else 0.0)
     child_visits = calculate_search_statistics(root, 1858)
     return move_num, root, child_visits
 
@@ -351,7 +352,7 @@ cdef inline void add_vloss(Node root, list moves_to_leaf):
 cdef select_best_move(Node node, object rng, float temp):
     cdef list moves = list(node.children.keys())
     cdef cnp.ndarray probs = np.array([node[move].N for move in moves])
-    if temp == 0:
+    if temp == 0.0:
         return moves[np.argmax(probs)]
     else:
         probs = np.power(probs, 1.0 / temp)
