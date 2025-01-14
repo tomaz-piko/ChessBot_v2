@@ -36,6 +36,10 @@ mod _lib {
             format!("{}", self.board)
         }
 
+        fn fen(&self) -> String {
+            self.board.fen()
+        }
+
         fn push_uci(&mut self, uci: &str) -> PyResult<()> {
             if let Err(err) = self.board.push_uci(uci) {
                 panic!("{}", err)
@@ -119,7 +123,7 @@ mod _lib {
                 Some(outcome) => match outcome {
                     board::Outcome::Checkmate => "Checkmate".to_string(),
                     board::Outcome::Stalemate => "Stalemate".to_string(),
-                    board::Outcome::FiftyMoveRule => "FiftyMoveRules".to_string(),
+                    board::Outcome::FiftyMoveRule => "FiftyMoveRule".to_string(),
                     board::Outcome::ThreeFoldRepetition => "ThreefoldRepetition".to_string(),
                     board::Outcome::InsufficientMaterial => "InsufficientMaterial".to_string(),
                 },

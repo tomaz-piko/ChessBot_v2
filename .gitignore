@@ -11,3 +11,4 @@ python/*.egg-info
 **/**.c
 **/Profile.prof
 **/**.html
+syzygy/

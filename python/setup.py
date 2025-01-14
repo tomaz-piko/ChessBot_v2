@@ -8,6 +8,11 @@ extensions = [
         sources=["python/mcts/c.pyx"],
         include_dirs=[numpy.get_include()]
     ),
+    Extension(
+        "python.selfplay.c",
+        sources=["python/selfplay/c.pyx"],
+        include_dirs=[numpy.get_include()]
+    ),
 ]
 
 setup(

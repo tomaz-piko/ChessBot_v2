@@ -1,0 +1,1 @@
+cpdef play_game(object trt_func, object table_base, unsigned int verbose)
