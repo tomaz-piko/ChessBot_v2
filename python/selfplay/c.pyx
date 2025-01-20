@@ -5,16 +5,15 @@ from mcts import Node, find_best_move
 from rchess import Board
 from chess import Board as TbBoard
 from configs import selfplayConfig
-import numpy as np
 cimport numpy as cnp
 
 cnp.import_array()
 
-cdef inline int terminal_value(bint on_turn, bint winner):
+cdef inline float terminal_value(bint on_turn, bint winner):
     if winner == on_turn:
-        return 1
+        return 1.0
     else:
-        return -1
+        return -1.0
 
 cpdef play_game(object trt_func, object tablebase, unsigned int verbose):
     cdef dict config = selfplayConfig
@@ -59,9 +58,7 @@ cpdef play_game(object trt_func, object tablebase, unsigned int verbose):
                 break
     end_time = time.time()
 
-    cdef cnp.ndarray images_np = np.array(images)
-    cdef cnp.ndarray statistics_np = np.array(statistics)
-    cdef cnp.ndarray[cnp.int8_t, ndim=1] terminal_values = np.zeros(moves_played, dtype=np.int8)
+    cdef list terminal_values = [0.0] * moves_played
     if winner is not None:
         for i in range(moves_played):
             terminal_values[i] = terminal_value(True if i % 2 == 0 else False, winner)        
@@ -75,4 +72,4 @@ cpdef play_game(object trt_func, object tablebase, unsigned int verbose):
             else:
                 outcome_str = f"Draw by {board.outcome_str()}"
         print(f"{outcome_str} in {moves_played} moves in {end_time - start_time:.2f} seconds")
-    return images_np, statistics, terminal_values
+    return images, (statistics, terminal_values)

@@ -115,7 +115,7 @@ def generate_model():
 
 def save_as_trt_model(model, precision_mode="FP32", build_model=False):
     def input_fn():
-        np_data = np.load(f"{config['data_path']}/conversion_data/histories.npz")
+        np_data = np.load(f"{config['project_dir']}/data/conversion_data/histories.npz")
         histories = np_data["histories"]
         # Yield the histories in batches of size defaultConfig["batch_size"]
         for i in range(0, len(histories), config["batch_size"]):
@@ -123,7 +123,7 @@ def save_as_trt_model(model, precision_mode="FP32", build_model=False):
 
     from tensorflow.python.compiler.tensorrt import trt_convert as trt
 
-    model_save_path = f"{config['data_path']}/models/saved_model"
+    model_save_path = f"{config['project_dir']}/data/models/saved_model"
     model.save(model_save_path)
     conversion_params = trt.TrtConversionParams(
         precision_mode=precision_mode,
@@ -146,7 +146,7 @@ def save_as_trt_model(model, precision_mode="FP32", build_model=False):
     converter.save(model_save_path)
 
 def load_as_trt_model():
-    model_save_path = f"{config['data_path']}/models/saved_model"
+    model_save_path = f"{config['project_dir']}/data/models/saved_model"
     loaded_model = tf.saved_model.load(model_save_path)
     trt_func = loaded_model.signatures['serving_default']
     return trt_func, loaded_model 

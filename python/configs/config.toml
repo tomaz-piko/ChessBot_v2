@@ -1,6 +1,6 @@
 [DEFAULT]
 model_size = sm
-data_path = /home/tomaz/ChessBot_v2/data
+project_dir = /home/tomaz/ChessBot_v2/
 
 # Model
 # History

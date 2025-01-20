@@ -103,6 +103,7 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
 
     if root is None or root.is_leaf():
         root = Node(0.0)
+        root.to_play = board.to_play()
         tree_reused = False
 
     if root.is_leaf():
