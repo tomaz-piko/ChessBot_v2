@@ -1,1 +1,1 @@
-from .c import play_game
+from .c import play_game, play_n_games

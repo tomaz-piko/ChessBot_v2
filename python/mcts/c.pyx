@@ -18,7 +18,14 @@ BATCH_DTYPE = np.int64
 ctypedef cnp.int64_t BATCH_DTYPE_t
 
 cdef dict m_w = map_w
-cdef dict m_b = map_b    
+cdef dict m_b = map_b
+
+cdef class NodeToProcess:
+    def __cinit__(self, list moves_to_node, list legal_moves_tuple, list image, bint add_exploration_noise):
+        self.moves_to_node = moves_to_node
+        self.legal_moves_tuple = legal_moves_tuple
+        self.image = image
+        self.add_exploration_noise = add_exploration_noise
 
 cdef class Node:
     def __cinit__(self, float p):
@@ -113,7 +120,7 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
                 trt_func=trt_func,
                 batch=batch
             )
-        evaluate_node(root, policy_logits[0], board.legal_moves_tuple(), debug)
+        expand_and_evaluate_node(root, policy_logits[0], board.legal_moves_tuple(), debug)
         root.N += 1
 
     if not tree_reused and root_exploration_noise:
@@ -171,7 +178,7 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
             )
         
         for idx in range(nodes_found):           
-            evaluate_node(nodes_to_eval[idx], policy_logits[idx], eval_nodes_legal_moves[idx], debug)
+            expand_and_evaluate_node(nodes_to_eval[idx], policy_logits[idx], eval_nodes_legal_moves[idx], debug)
             value = value_to_01(values[idx].item())
             update(root, moves_to_nodes[idx], value)
             if debug:
@@ -183,6 +190,103 @@ cpdef find_best_move(object board, Node root, object trt_func, unsigned int num_
     move_num = select_best_move(root, rng, temp=moves_softmax_temp if board.ply() <= config['num_mcts_sampling_moves'] else 0.0)
     child_visits = calculate_search_statistics(root, 1858)
     return move_num, root, child_visits
+
+cpdef list gather_nodes_to_process(Node root, object board, unsigned int nodes_to_find, bint debug):
+    cdef list nodes_to_process = []
+    cdef unsigned int nodes_found = 0
+    cdef unsigned int failsafe = 0
+    cdef unsigned int depth_to_root
+    cdef Node node
+    cdef object tmp_board
+    cdef float fpu_root = 1.0
+    cdef float fpu_leaf = 0.3
+    cdef unsigned int pb_c_base = 19652
+    cdef float pb_c_init = 1.25
+    cdef float pb_c_factor = 1.0
+    cdef bint history_flip = False
+    cdef unsigned int num_history_planes = 109
+
+    if root.is_leaf():
+        history, _ = board.history(history_flip)
+        return [NodeToProcess([], board.legal_moves_tuple(), history, True)]
+
+    while nodes_found < nodes_to_find and failsafe < 2:
+        depth_to_root = 0
+        node = root
+        tmp_board = board.clone()
+        while not node.is_leaf():
+            fpu = fpu_leaf if depth_to_root > 0 else fpu_root
+            move_num = select_child(node, pb_c_base=pb_c_base, pb_c_init=pb_c_init, pb_c_factor=pb_c_factor, fpu=fpu, debug=debug)
+            node = node[move_num]
+            tmp_board.push_num(move_num)
+            depth_to_root += 1
+        
+        terminal, is_drawn = tmp_board.mid_search_terminal(depth_to_root)
+        if terminal:
+            value = 0.5 if is_drawn else 0.0
+            update(root, tmp_board.moves_history(depth_to_root), value)
+            if debug:
+                node.debug_info["init_value"] = value
+            failsafe += 1
+            continue
+
+        moves_to_node = tmp_board.moves_history(depth_to_root)
+        add_vloss(root, moves_to_node)
+
+        node.to_play = tmp_board.to_play()
+
+        history, _ = tmp_board.history(history_flip)
+        nodes_to_process.append(NodeToProcess(moves_to_node, tmp_board.legal_moves_tuple(), history, False))
+
+        nodes_found += 1
+    return nodes_to_process
+
+cpdef void process_node(NodeToProcess node_to_process, Node root, cnp.ndarray[DTYPE_t, ndim=1] policy_logits, float value, bint debug):
+    cdef Node node = root
+    cdef unsigned int move_num
+    for move_num in node_to_process.moves_to_node:
+        node = node[move_num]
+    expand_and_evaluate_node(node, policy_logits, node_to_process.legal_moves_tuple, debug)
+    value = value_to_01(value.item())
+    update(root, node_to_process.moves_to_node, value)
+    if debug:
+        node.debug_info["init_value"] = value
+    
+@cython.nonecheck(False)
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.initializedcheck(False)
+cdef void expand_and_evaluate_node(Node node, float[:] policy_logits, list legal_moves_tuple, bint debug):
+    cdef dict m = m_w if node.to_play else m_b
+    cdef str move_uci
+    cdef Py_ssize_t moves_count = len(legal_moves_tuple)
+    cdef cnp.ndarray[DTYPE_t, ndim=1] policy = np.zeros(moves_count, dtype=DTYPE)
+    cdef float[:] policy_mw = policy
+    cdef float p, logsumexp
+    cdef float _max = -99.9
+    cdef float expsum = 0.0
+    cdef Node child
+    cdef Py_ssize_t i, p_idx
+    
+    for i in range(moves_count):
+        move_uci = legal_moves_tuple[i][1]
+        p_idx = m[move_uci]
+        p = policy_logits[p_idx]
+        policy_mw[i] = p
+        if p > _max:
+            _max = p
+
+    for i in range(moves_count):
+        expsum += exp(policy_mw[i] - _max)
+
+    logsumexp = log(expsum) + _max
+    for i in range(moves_count):
+        node.add_child(legal_moves_tuple[i][0], exp(policy_mw[i] - logsumexp))
+    if debug:
+        for i in range(moves_count):
+            child = node.children[legal_moves_tuple[i][0]]
+            child.debug_info["move_uci"] = legal_moves_tuple[i][1]
+            child.debug_info["move_num"] = legal_moves_tuple[i][0]
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -255,46 +359,10 @@ cdef inline float UCB(unsigned int cN, float cP, float pN_sqrt, float pb_c) noex
 cdef inline float PB_C(unsigned int pN, unsigned int pb_c_base, float pb_c_init, float pb_c_factor) noexcept:
     return log((pN + pb_c_base + 1) / pb_c_base) * pb_c_factor + pb_c_init
 
-@cython.nonecheck(False)
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.initializedcheck(False)
-cdef void evaluate_node(Node node, float[:] policy_logits, list legal_moves_tuple, bint debug):
-    cdef dict m = m_w if node.to_play else m_b
-    cdef str move_uci
-    cdef Py_ssize_t moves_count = len(legal_moves_tuple)
-    cdef cnp.ndarray[DTYPE_t, ndim=1] policy = np.zeros(moves_count, dtype=DTYPE)
-    cdef float[:] policy_mw = policy
-    cdef float p, logsumexp
-    cdef float _max = -99.9
-    cdef float expsum = 0.0
-    cdef Node child
-    cdef Py_ssize_t i, p_idx
-    
-    for i in range(moves_count):
-        move_uci = legal_moves_tuple[i][1]
-        p_idx = m[move_uci]
-        p = policy_logits[p_idx]
-        policy_mw[i] = p
-        if p > _max:
-            _max = p
-
-    for i in range(moves_count):
-        expsum += exp(policy_mw[i] - _max)
-
-    logsumexp = log(expsum) + _max
-    for i in range(moves_count):
-        node.add_child(legal_moves_tuple[i][0], exp(policy_mw[i] - logsumexp))
-    if debug:
-        for i in range(moves_count):
-            child = node.children[legal_moves_tuple[i][0]]
-            child.debug_info["move_uci"] = legal_moves_tuple[i][1]
-            child.debug_info["move_num"] = legal_moves_tuple[i][0]
-
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
-cdef cnp.ndarray calculate_search_statistics(Node root, unsigned int num_actions):
+cpdef cnp.ndarray calculate_search_statistics(Node root, unsigned int num_actions):
     cdef cnp.ndarray[DTYPE_t, ndim=1] child_visits = np.zeros(num_actions, dtype=DTYPE)
     cdef float[:] child_visits_mw = child_visits
     cdef dict m = m_w if root.to_play else m_b
@@ -349,7 +417,7 @@ cdef inline void add_vloss(Node root, list moves_to_leaf):
         node = node[move]
         node.apply_vloss()
 
-cdef select_best_move(Node node, object rng, float temp):
+cpdef select_best_move(Node node, object rng, float temp):
     cdef list moves = list(node.children.keys())
     cdef cnp.ndarray probs = np.array([node[move].N for move in moves])
     if temp == 0.0:

@@ -1,14 +1,21 @@
 #cython: profile=True, language_level=3
 
 import time
-from mcts import Node, find_best_move
+from mcts import Node, find_best_move, gather_nodes_to_process, process_node, calculate_search_statistics, select_best_move
 from rchess import Board
 from chess import Board as TbBoard
 from configs import selfplayConfig
+from model import predict_fn
 import numpy as np
 cimport numpy as cnp
 
 cnp.import_array()
+
+DTYPE = np.float32
+ctypedef cnp.float32_t DTYPE_t
+
+BATCH_DTYPE = np.int64
+ctypedef cnp.int64_t BATCH_DTYPE_t
 
 cdef inline int terminal_value(bint on_turn, bint winner):
     if winner == on_turn:
@@ -76,3 +83,63 @@ cpdef play_game(object trt_func, object tablebase, unsigned int verbose):
                 outcome_str = f"Draw by {board.outcome_str()}"
         print(f"{outcome_str} in {moves_played} moves in {end_time - start_time:.2f} seconds")
     return images_np, statistics, terminal_values
+
+cpdef play_n_games(object trt_func, object tablebase, int n_simul_games, int num_games, unsigned int verbose):
+    cdef dict config = selfplayConfig
+    cdef unsigned int num_mcts_sims = config["num_mcts_sims"]
+    cdef unsigned int num_vl_searches = config["num_vl_searches"]
+    cdef unsigned int batch_size = num_vl_searches * n_simul_games
+    cdef cnp.ndarray[BATCH_DTYPE_t, ndim=2] batch = np.zeros((batch_size, 109), dtype=BATCH_DTYPE)
+
+    cdef list games = []
+    cdef list roots = []
+    for _ in range(n_simul_games):
+        roots.append(Node(0.0))
+        games.append(Board())
+
+    cdef int games_finished = 0
+    cdef Py_ssize_t i
+    cdef list nodes_to_process
+    cdef bint finished = False
+    while not finished:
+        nodes_to_process = []
+        for i in range(n_simul_games):
+            nodes_to_process.extend(gather_nodes_to_process(roots[i], games[i], num_vl_searches, False))
+
+        if len(nodes_to_process) > 0:
+            for i in range(len(nodes_to_process)):
+                batch[i] = nodes_to_process[i].image
+            values, policy_logits = make_predictions(trt_func, batch)
+
+            for i in range(len(nodes_to_process)):
+                process_node(nodes_to_process[i], roots[i], policy_logits[i], values[i], False)
+
+        for i in range(n_simul_games):
+            if roots[i].N >= num_mcts_sims:
+                move, root, _ = find_best_move(games[i], roots[i], trt_func, 0, False)
+                games[i].push_num(move)
+                roots[i] = root[move]
+
+                terminal, winner = games[i].terminal()
+                if terminal:
+                    games_finished += 1
+                    if games_finished == num_games:
+                        finished = True
+                        break
+                    games[i] = Board()
+                    roots[i] = Node(0.0)
+
+
+cdef make_predictions(object trt_func, cnp.ndarray[BATCH_DTYPE_t, ndim=2] batch):
+    cdef cnp.ndarray[DTYPE_t, ndim=2] values, policy_logits
+    cdef object values_tf, policy_logits_tf
+
+    values_tf, policy_logits_tf = predict_fn(
+        trt_func=trt_func,
+        images=batch
+    )
+
+    values = np.array(values_tf, dtype=DTYPE)
+    policy_logits = np.array(policy_logits_tf, dtype=DTYPE)
+    return values, policy_logits
+    
