@@ -1,4 +1,4 @@
-from .c import find_best_move, Node
+from .c import Node, MCTS
 
 def as_str(value):
     if value < 0:

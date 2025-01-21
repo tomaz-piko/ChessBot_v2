@@ -1,7 +1,7 @@
 #cython: profile=True, language_level=3
 
 import time
-from mcts import Node, find_best_move
+from mcts import Node, MCTS
 from rchess import Board
 from chess import Board as TbBoard
 from configs import selfplayConfig
@@ -25,6 +25,7 @@ cpdef play_game(object trt_func, object tablebase, unsigned int verbose):
     cdef double start_time, end_time
     cdef str outcome_str = ""
 
+    cdef object mcts = MCTS(config)
     cdef object board = Board()
     cdef object root = Node(0.0)
 
@@ -34,7 +35,7 @@ cpdef play_game(object trt_func, object tablebase, unsigned int verbose):
         if terminal:
             break
 
-        move, root, child_visits = find_best_move(board, root, trt_func, 800, False)
+        move, root, child_visits = mcts.find_best_move(board, root, trt_func, 800, 0.0, False)
 
         history, _ = board.history(history_flip)
         images.append(history)

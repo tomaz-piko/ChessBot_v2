@@ -1,6 +1,5 @@
 from .c import play_game
 
-from selfplay import play_game
 import numpy as np
 import chess.syzygy as syzygy
 from datetime import datetime
@@ -8,7 +7,7 @@ from multiprocessing import Process, Manager
 from configs import defaultConfig as config
 
 class GamesBuffer:
-    def __init__(self, max_size=1024):
+    def __init__(self, max_size=1024): #TODO
         self.max_size = max_size
         self.images = []
         self.search_stats = []
@@ -19,7 +18,7 @@ class GamesBuffer:
         self.search_stats.extend(search_stats)
         self.terminal_values.extend(terminal_values)
         assert len(self.images) == len(self.search_stats) == len(self.terminal_values)
-        if len(self.images) >= self.max_size:
+        while len(self.images) >= self.max_size:
             self.flush()
 
     def flush(self):
@@ -39,16 +38,20 @@ class GamesBuffer:
         self.search_stats = self.search_stats[-self.max_size:]
         self.terminal_values = self.terminal_values[-self.max_size:]
 
-def play_games(num_games, games_count):
-    import tensorflow as tf
-    gpu_devices = tf.config.experimental.list_physical_devices('GPU')
-    tf.config.experimental.set_memory_growth(gpu_devices[0], True)
-    from model import load_as_trt_model
+def play_games(num_games, games_count, buffer_size=1024, use_fake_model=False):
+    if use_fake_model:
+        from utils import FakeTRTFunc
+        trt_func = FakeTRTFunc()
+    else:
+        import tensorflow as tf
+        gpu_devices = tf.config.experimental.list_physical_devices('GPU')
+        tf.config.experimental.set_memory_growth(gpu_devices[0], True)
+        from model import load_as_trt_model
+        trt_func, _ = load_as_trt_model()
 
     # Load the model
-    trt_func, _ = load_as_trt_model()
     tablebase = syzygy.open_tablebase(f"{config['project_dir']}/syzygy/3-4-5")
-    buffer = GamesBuffer()
+    buffer = GamesBuffer(buffer_size)
 
     # Play the games until games_count is reached
     while games_count.value < num_games:
@@ -56,13 +59,14 @@ def play_games(num_games, games_count):
         games_count.value += 1
         buffer.append(images, search_stats, terminal_values)
         del images, search_stats, terminal_values
+    buffer.flush()
 
-def self_play(num_agents=1, num_games=100):
+def run_selfplay(num_agents=1, num_games=100, buffer_size=1024, use_fake_model=False):
     processes = {}
     with Manager() as manager:
         games_count = manager.Value('i', 0)
         for i in range(num_agents):
-            p = Process(target=play_games, args=(num_games, games_count))
+            p = Process(target=play_games, args=(num_games, games_count, buffer_size, use_fake_model))
             processes[i] = p
             p.start()
 

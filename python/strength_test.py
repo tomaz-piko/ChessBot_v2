@@ -74,15 +74,16 @@ def _solve_tests(tests: list, results: dict, use_fake_model: bool = False, num_m
         tf.config.experimental.set_memory_growth(gpu_devices[0], True)
         from model import load_as_trt_model
         trt_func, _ = load_as_trt_model()
-
-    from mcts import find_best_move
+    from configs import selfplayConfig
+    from mcts import MCTS
+    mcts = MCTS(selfplayConfig)
 
     for test in tests:
         fen = test["fen"]
         possible_scores = test["results"]
         board = Board(fen)
         try:
-            move_num, _, _ = find_best_move(board, None, trt_func, num_mcts_sims, False)
+            move_num, _, _ = mcts.find_best_move(board, None, trt_func, num_mcts_sims, 0.0, False)
         except:
             print(f"Error on test: {fen}")
             continue
