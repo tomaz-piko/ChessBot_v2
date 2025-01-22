@@ -12,6 +12,7 @@ _ints = [
     "num_mcts_sims",
     "num_mcts_sampling_moves",
     "num_vl_searches",
+    "buffer_size",
 
     # Model
     "conv_filters",

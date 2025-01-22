@@ -1,10 +1,9 @@
 #cython: profile=True, language_level=3
 
 import time
-from mcts import Node, MCTS
+from mcts import Node
 from rchess import Board
 from chess import Board as TbBoard
-from configs import selfplayConfig
 cimport numpy as cnp
 
 cnp.import_array()
@@ -15,17 +14,16 @@ cdef inline float terminal_value(bint on_turn, bint winner):
     else:
         return -1.0
 
-cpdef play_game(object trt_func, object tablebase, unsigned int verbose):
-    cdef dict config = selfplayConfig
-    cdef bint history_flip = config["history_perspective_flip"]
+cpdef play_game(object mctsSearch, object trt_func, object tablebase, unsigned int verbose):
     cdef unsigned int moves_played = 0
+    cdef bint history_flip = mctsSearch.get_history_flip()
+    cdef bint to_play
     cdef list images = []
     cdef list statistics = []
     cdef bint terminal
     cdef double start_time, end_time
     cdef str outcome_str = ""
 
-    cdef object mcts = MCTS(config)
     cdef object board = Board()
     cdef object root = Node(0.0)
 
@@ -35,7 +33,7 @@ cpdef play_game(object trt_func, object tablebase, unsigned int verbose):
         if terminal:
             break
 
-        move, root, child_visits = mcts.find_best_move(board, root, trt_func, 800, 0.0, False)
+        move, root, child_visits = mctsSearch.find_best_move(board, root, trt_func, 800, 0.0, False)
 
         history, _ = board.history(history_flip)
         images.append(history)
@@ -54,7 +52,8 @@ cpdef play_game(object trt_func, object tablebase, unsigned int verbose):
                     outcome_str = "Tablebase draw"
                     break
                 else:
-                    winner = board.to_play() if wdl > 0 else not board.to_play()
+                    to_play = board.to_play()
+                    winner = to_play if wdl > 0 else not to_play
                     outcome_str = "White wins by tablebase" if winner == True else "Black wins by tablebase"
                 break
     end_time = time.time()

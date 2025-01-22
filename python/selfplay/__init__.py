@@ -4,10 +4,13 @@ import numpy as np
 import chess.syzygy as syzygy
 from datetime import datetime
 from multiprocessing import Process, Manager
-from configs import defaultConfig as config
+from configs import selfplayConfig
 
 class GamesBuffer:
-    def __init__(self, max_size=1024): #TODO
+    def __init__(self, save_path, max_size=1024):
+        if save_path[-1] != '/':
+            save_path += '/'
+        self.save_path = save_path
         self.max_size = max_size
         self.images = []
         self.search_stats = []
@@ -30,15 +33,13 @@ class GamesBuffer:
         timestamp = datetime.now().strftime('%F_%T.%f')[:-3]
         num_positions = images_np.shape[0]
         file_name = f"{num_positions}_{timestamp}.npz"
-        np.savez_compressed(file_name, 
+        np.savez_compressed(self.save_path + file_name, 
                             images=images_np,
                             search_stats=search_stats_np,
                             terminal_values=terminal_values_np)
-        self.images = self.images[-self.max_size:]
-        self.search_stats = self.search_stats[-self.max_size:]
-        self.terminal_values = self.terminal_values[-self.max_size:]
+        del self.images[:self.max_size], self.search_stats[:self.max_size], self.terminal_values[:self.max_size]
 
-def play_games(num_games, games_count, buffer_size=1024, use_fake_model=False):
+def play_games(config, num_games, games_count, buffer_size=None, use_fake_model=False, verbose=0):
     if use_fake_model:
         from utils import FakeTRTFunc
         trt_func = FakeTRTFunc()
@@ -48,25 +49,28 @@ def play_games(num_games, games_count, buffer_size=1024, use_fake_model=False):
         tf.config.experimental.set_memory_growth(gpu_devices[0], True)
         from model import load_as_trt_model
         trt_func, _ = load_as_trt_model()
+    from mcts import MCTS
 
-    # Load the model
+    if buffer_size is None:
+        buffer_size = config['buffer_size']
     tablebase = syzygy.open_tablebase(f"{config['project_dir']}/syzygy/3-4-5")
-    buffer = GamesBuffer(buffer_size)
+    buffer = GamesBuffer(f"{config['project_dir']}/data/train_data", buffer_size)
+    mctsSearch = MCTS(config)
 
     # Play the games until games_count is reached
     while games_count.value < num_games:
-        images, (search_stats, terminal_values) = play_game(trt_func, tablebase, 0)
+        images, (search_stats, terminal_values) = play_game(mctsSearch, trt_func, tablebase, verbose=verbose)
         games_count.value += 1
         buffer.append(images, search_stats, terminal_values)
         del images, search_stats, terminal_values
     buffer.flush()
 
-def run_selfplay(num_agents=1, num_games=100, buffer_size=1024, use_fake_model=False):
+def run_selfplay(num_agents=1, num_games=100, buffer_size=1024, use_fake_model=False, verbose=0):
     processes = {}
     with Manager() as manager:
         games_count = manager.Value('i', 0)
         for i in range(num_agents):
-            p = Process(target=play_games, args=(num_games, games_count, buffer_size, use_fake_model))
+            p = Process(target=play_games, args=(selfplayConfig, num_games, games_count, buffer_size, use_fake_model, verbose))
             processes[i] = p
             p.start()
 

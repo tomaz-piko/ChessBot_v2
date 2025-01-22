@@ -1,1 +1,1 @@
-cpdef play_game(object trt_func, object table_base, unsigned int verbose)
+cpdef play_game(object mctsSearch, object trt_func, object table_base, unsigned int verbose)

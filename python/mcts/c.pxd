@@ -44,3 +44,5 @@ cdef class MCTS:
     cdef cnp.ndarray calculate_search_statistics(self, Node root)
 
     cdef select_best_move(self, Node node, float temp)
+
+    cpdef get_history_flip(self)

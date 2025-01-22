@@ -70,7 +70,10 @@ cdef class MCTS:
         self.num_planes = 109
         self.rng = np.random.default_rng()
         self.m_w = map_w
-        self.m_b = map_b    
+        self.m_b = map_b
+
+    cpdef get_history_flip(self):
+        return self.history_flip
 
     @cython.boundscheck(False)
     @cython.nonecheck(False)
