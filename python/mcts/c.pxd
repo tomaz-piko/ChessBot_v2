@@ -1,4 +1,4 @@
-#cython: profile=True, language_level=3
+#cython: profile=False, language_level=3
 cimport numpy as cnp
 cnp.import_array()
 
@@ -38,11 +38,11 @@ cdef class MCTS:
     cdef dict m_b
 
     cpdef find_best_move(self, object board, Node root, object trt_func, unsigned int num_sims, float time_limit, bint debug)
+    
+    cpdef get_history_flip(self)
 
     cdef void expand_and_evaluate_node(self, Node node, float[:] policy_logits, list legal_moves_tuple, bint debug)
 
     cdef cnp.ndarray calculate_search_statistics(self, Node root)
 
     cdef select_best_move(self, Node node, float temp)
-
-    cpdef get_history_flip(self)

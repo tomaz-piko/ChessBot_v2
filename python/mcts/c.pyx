@@ -1,4 +1,4 @@
-#cython: profile=True, language_level=3
+#cython: profile=False, language_level=3
 from actionspace import map_w, map_b
 from rchess import Move
 from model import predict_fn
@@ -144,6 +144,9 @@ cdef class MCTS:
                 
                 terminal, is_drawn = tmp_board.mid_search_terminal(depth_to_root)
                 if terminal:
+                    # If a position is not drawn, the only other possible outcome is checkmate
+                    # Because the move has already been played (while traversing the tree), 
+                    # this node is from the perspective of the checkmated player
                     value = 0.5 if is_drawn else 0.0
                     update(root, tmp_board.moves_history(depth_to_root), value)
                     if debug:
@@ -297,6 +300,9 @@ cdef make_predictions(object trt_func, cnp.ndarray[BATCH_DTYPE_t, ndim=2] batch)
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
+@cython.cdivision(True)
+@cython.nonecheck(False)
+@cython.initializedcheck(False)
 cdef unsigned int select_child(Node node, unsigned int pb_c_base, float pb_c_init, float pb_c_factor, float fpu, bint debug):
     cdef Node child
     cdef unsigned int move
