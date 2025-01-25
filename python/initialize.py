@@ -19,7 +19,7 @@ if prompt.lower() != "y":
 #    - ../data/conversion_data/
 #    - ../data/logs/
 #    - ../data/models/
-data_dir = config["data_path"]
+data_dir = f"{config['project_dir']}/data"
 if os.path.exists(data_dir):
     shutil.rmtree(data_dir)
 
@@ -27,6 +27,7 @@ os.makedirs(data_dir)
 os.makedirs(f"{data_dir}/conversion_data")
 os.makedirs(f"{data_dir}/logs")
 os.makedirs(f"{data_dir}/models")
+os.makedirs(f"{data_dir}/selfplay_data")
 print("Data directory has been successfully created.")
 
 # Create conversion data from random histories from games
@@ -53,7 +54,7 @@ random_fens = [
     "rnbqkbnr/pppppppp/8/4P3/8/2N5/PPP1PPPP/R1BQKBNR w KQkq - 0 1"
 ]
 histories = []
-while len(histories) < config["batch_size"] * 4:
+while len(histories) < config["num_vl_searches"] * 4:
     # Take a random fen
     fen = np.random.choice(random_fens)
     board = Board(fen)
@@ -67,7 +68,7 @@ while len(histories) < config["batch_size"] * 4:
             break
         history, _ = board.history(config["history_perspective_flip"])
         histories.append(history)
-        if len(histories) == config["batch_size"] * 4:
+        if len(histories) == config["num_vl_searches"] * 4:
             break
 
 print(f"Generated {len(histories)} random histories.")
@@ -80,4 +81,4 @@ from model import generate_model, save_as_trt_model
 # Generate the model and save it as a TensorRT model
 model = generate_model()
 model.save(f"{data_dir}/models/model.keras")
-save_as_trt_model(model, precision_mode="INT8")
+save_as_trt_model(model, precision_mode="FP16", build_model=True)

@@ -1,5 +1,4 @@
 from .c import play_game
-
 import numpy as np
 import chess.syzygy as syzygy
 from datetime import datetime
@@ -54,7 +53,7 @@ def play_games(config, num_games, games_count, buffer_size=None, use_fake_model=
     if buffer_size is None:
         buffer_size = config['buffer_size']
     tablebase = syzygy.open_tablebase(f"{config['project_dir']}/syzygy/3-4-5")
-    buffer = GamesBuffer(f"{config['project_dir']}/data/train_data", buffer_size)
+    buffer = GamesBuffer(f"{config['project_dir']}/data/selfplay_data", buffer_size)
     mctsSearch = MCTS(config)
 
     # Play the games until games_count is reached
@@ -67,6 +66,8 @@ def play_games(config, num_games, games_count, buffer_size=None, use_fake_model=
 
 def run_selfplay(num_agents=1, num_games=100, buffer_size=1024, use_fake_model=False, verbose=0):
     processes = {}
+    time_start =  datetime.now()
+    formatted_timestart = time_start.strftime("%d/%m %H:%M:%S")
     with Manager() as manager:
         games_count = manager.Value('i', 0)
         for i in range(num_agents):
@@ -76,3 +77,10 @@ def run_selfplay(num_agents=1, num_games=100, buffer_size=1024, use_fake_model=F
 
         for p in processes.values():
             p.join()
+    time_end = datetime.now()
+    formatted_timeend = time_end.strftime("%d/%m %H:%M:%S")
+    print(f"Self-play started at {formatted_timestart} and ended at {formatted_timeend}.")
+    time_difference = time_end - time_start
+    hours, remainder = divmod(time_difference.total_seconds(), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    print(f"Elapsed time: {int(hours)} hours, {int(minutes)} minutes, {int(seconds)} seconds")

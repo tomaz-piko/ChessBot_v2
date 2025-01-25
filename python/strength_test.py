@@ -5,8 +5,9 @@ import time
 import sys
 import re
 from datetime import datetime
-from rchess import Board, Move
-from configs import defaultConfig as config
+from configs import selfplayConfig
+import argparse
+
 
 def _chunk_into_n(lst: list, n: int) -> list:
     """Splits an array into n chunks
@@ -34,7 +35,7 @@ def _load_mosca_sts() -> list:
             - results: Dictionary with UCI move as key and score as value (multiple winning moves but one is still best)
     """
 
-    fileR = open(f"{config['project_dir']}/test_suites/STS1-STS15_LAN_v3.epd", "r")
+    fileR = open(f"{selfplayConfig['project_dir']}/test_suites/STS1-STS15_LAN_v3.epd", "r")
     lines = fileR.readlines()
     fileR.close()
 
@@ -53,7 +54,7 @@ def _load_mosca_sts() -> list:
         tests.append(test)
     return tests
 
-def _solve_tests(tests: list, results: dict, use_fake_model: bool = False, num_mcts_sims: int = 800, time_limit: float = 1.0):
+def _solve_tests(config: dict, tests: list, results: dict, use_fake_model: bool = False, num_mcts_sims: int = 0, time_limit: float = 0.0):
     """Loads a TRT model and solves a list of tests using MCTS with "time_limit" of seconds per move. Appends the results to the results dictionary
 
     Args:
@@ -65,6 +66,7 @@ def _solve_tests(tests: list, results: dict, use_fake_model: bool = False, num_m
         model_path (str, optional): Which model from checkpoints to load. Defaults to "latest".
         time_limit (float, optional): Time limit per test / move (solutions are one movers). Defaults to 1.0.
     """
+    assert num_mcts_sims > 0 or time_limit > 0.0, "Only one of num_mcts_sims or time_limit can be set"
     if use_fake_model:
         from utils import FakeTRTFunc
         trt_func = FakeTRTFunc()
@@ -74,18 +76,19 @@ def _solve_tests(tests: list, results: dict, use_fake_model: bool = False, num_m
         tf.config.experimental.set_memory_growth(gpu_devices[0], True)
         from model import load_as_trt_model
         trt_func, _ = load_as_trt_model()
-    from configs import selfplayConfig
-    from mcts import MCTS
-    mcts = MCTS(selfplayConfig)
+    from mcts import MCTS, Node
+    from rchess import Board, Move
 
+    mctsSearch = MCTS(config)
     for test in tests:
         fen = test["fen"]
         possible_scores = test["results"]
         board = Board(fen)
         try:
-            move_num, _, _ = mcts.find_best_move(board, None, trt_func, num_mcts_sims, 0.0, False)
-        except:
-            print(f"Error on test: {fen}")
+            root = Node(0.0)
+            move_num, _, _ = mctsSearch.find_best_move(board, root, trt_func, num_mcts_sims, time_limit, False)
+        except Exception as e:
+            print(f"Error on test: {fen} -> {e}")
             continue
         move = Move(move_num)
         if move.uci() in possible_scores:
@@ -93,20 +96,19 @@ def _solve_tests(tests: list, results: dict, use_fake_model: bool = False, num_m
         else:
             results[test["group"]].append(0)
 
-def do_strength_test(num_mcts_sims: int = 800, time_limit: float = None, num_actors: int = 1, use_fake_model: bool = False, save_results: bool = False, verbose: int = 0) -> float:
+def do_strength_test(num_mcts_sims: int = 0, time_limit: float = 0.0, num_actors: int = 1, use_fake_model: bool = False, save_results: bool = False, verbose: int = 0) -> float:
     """Performs a strength test suite (STS) on the model
 
     Args:
         time_limit (float): Time limit (seconds) per test / move (solutions are one movers).
         num_actors (int): Number of actors to use for parallel processing (multiprocessing).
         model_path (str, optional): Checkpoint path. Defaults to "latest".
-        test_suite (str, optional): Name of desired STS to run. Defaults to "mosca".
         save_results (bool, optional): Whether or not to save to sts_results_dir. Defaults to True.
 
     Returns:
         float: STS Rating of the model (Elo)
     """
-    assert num_mcts_sims is None or time_limit is None, "Only one of num_mcts_sims or time_limit can be set"
+    assert num_mcts_sims > 0 or time_limit > 0.0, "Only one of num_mcts_sims or time_limit can be set"
     final_statistics = {}
     slope = 445.23 # For estimating elo rating: https://github.com/fsmosca/STS-Rating/blob/master/sts_rating.py
     intercept = -242.85
@@ -126,7 +128,7 @@ def do_strength_test(num_mcts_sims: int = 800, time_limit: float = None, num_act
             results[test["group"]] = manager.list()
 
         for i in range(num_actors):
-            process = Process(target=_solve_tests, args=(chunkz[i], results, use_fake_model, num_mcts_sims, time_limit))
+            process = Process(target=_solve_tests, args=(selfplayConfig, chunkz[i], results, use_fake_model, num_mcts_sims, time_limit))
             processes.append(process)
             process.start()
 
@@ -139,7 +141,7 @@ def do_strength_test(num_mcts_sims: int = 800, time_limit: float = None, num_act
             group_stats = {
                 "score": sum(results[group]),
                 "total": len(results[group]),
-                "avg": round(sum(results[group]) / len(results[group]), 2)
+                "avg": round(sum(results[group]) / len(results[group]), 2) if len(results[group]) > 0 else 0
             }
             total_score += group_stats["score"]
             total_tests += group_stats["total"]
@@ -153,18 +155,42 @@ def do_strength_test(num_mcts_sims: int = 800, time_limit: float = None, num_act
     time_end = time.time()
     if verbose > 0:
         print(f"{total_tests} tests finished in: {(time_end - time_start):.2f} s")
+        print(final_statistics)
         print(f"STS Rating: {final_statistics['stsRating']}")
     if save_results:
-        save_path = f"{config.sts_results_dir}/{datetime.now().strftime('%d-%m-%Y_%H:%M:%S')}.json"
+        save_path = f"{selfplayConfig.sts_results_dir}/{datetime.now().strftime('%d-%m-%Y_%H:%M:%S')}.json"
         with open(save_path, "w") as file:
             json.dump(final_statistics, file)
     return final_statistics["stsRating"]
 
-if __name__ == "__main__":    
-    do_strength_test(num_mcts_sims=200, 
-                    time_limit=None,
-                    num_actors=1,
-                    use_fake_model=True,
-                    save_results=False,
-                    verbose=1
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Run strength test for ChessBot.')
+    parser.add_argument('-s', '--sims', type=int, default=0, help='Number of MCTS simulations to run. Only one of sims or time can be set.')
+    parser.add_argument('-t', '--time', type=float, default=0.0, help='Time limit per move. Only one of sims or time can be set.')
+    parser.add_argument('-a', '--actors', type=int, default=1, help='Number of actors to run in parallel.')
+    parser.add_argument('-f', '--use_fake_model', action='store_true', help='Use a fake model for testing.')
+    parser.add_argument('-v', '--verbose', type=int, default=1, help='Verbosity level.')
+    parser.add_argument('--save', action='store_true', help='Save the results to the sts_results_dir.')
+    args = parser.parse_args()
+
+    if args.sims <= 0 and args.time <= 0.0:
+        print("One of --sims or --time must be set.")
+        sys.exit(1) 
+    if args.sims > 0 and args.time > 0.0:
+        print("Only one of --sims or --time can be set.")
+        sys.exit(1)
+    print("Running strength test with the following arguments:")
+    print(f"Number of MCTS simulations: {args.sims}")
+    print(f"Time limit per move: {args.time}")
+    print(f"Number of actors: {args.actors}")
+    print(f"Use fake model: {args.use_fake_model}")
+    print(f"Verbosity level: {args.verbose}")
+    print(f"Save results: {args.save}")
+
+    do_strength_test(num_mcts_sims=args.sims, 
+                    time_limit=args.time,
+                    num_actors=args.actors,
+                    use_fake_model=args.use_fake_model,
+                    save_results=args.save,
+                    verbose=args.verbose
                     )

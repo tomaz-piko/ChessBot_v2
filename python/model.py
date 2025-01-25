@@ -118,8 +118,8 @@ def save_as_trt_model(model, precision_mode="FP32", build_model=False):
         np_data = np.load(f"{config['project_dir']}/data/conversion_data/histories.npz")
         histories = np_data["histories"]
         # Yield the histories in batches of size defaultConfig["batch_size"]
-        for i in range(0, len(histories), config["batch_size"]):
-            yield (histories[i:i + config["batch_size"]],)
+        for i in range(0, len(histories), config["num_vl_searches"]):
+            yield (histories[i:i + config["num_vl_searches"]],)
 
     from tensorflow.python.compiler.tensorrt import trt_convert as trt
 
