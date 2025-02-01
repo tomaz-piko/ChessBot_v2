@@ -47,7 +47,8 @@ def predict_fn(trt_func, images):
     value = predictions["value_head"]
     return value, policy_logits
 
-def reshape_planes(x):
+def reshape_planes(planes):
+    x = planes[:, :-1]
     shape = x.get_shape()
     x = tf.expand_dims(x, -1)
     mask = tf.bitwise.left_shift(tf.ones([], dtype=tf.int64), tf.range(64, dtype=tf.int64))
@@ -55,15 +56,15 @@ def reshape_planes(x):
     x = tf.cast(x, tf.bool)
     x = tf.cast(x, tf.float32)
     x = tf.reshape(x, [-1, int(shape[1]), 8, 8])
-    return x
+
+    y = tf.cast(planes[:, -1:], tf.float32)[:, :, tf.newaxis, tf.newaxis] / tf.fill([1, 1, 8, 8], 99.0)
+    return tf.concat([x, y], axis=1)
 
 # TODO CHECK PLANE RESHAPING CORECTNESS
 def generate_model():
     # Define the input layer
     input_layer = Input(shape=(NUM_PLANES), name="input_layer", dtype=tf.int64)
-    planes = reshape_planes(input_layer[:, :-1])
-    last_plane = tf.cast(input_layer[:, -1:], tf.float32)[:, :, tf.newaxis, tf.newaxis] / tf.fill([1, 1, 8, 8], 99.0)
-    x = tf.concat([planes, last_plane], axis=1)
+    x = reshape_planes(input_layer[:, :-1])
 
     # Define the body
     x = Conv2D(filters=CONV_FILTERS , kernel_size=3, strides=1, data_format="channels_first", padding="same", use_bias=False, kernel_initializer=CONV_KERNEL_INITIALIZER, kernel_regularizer=l2(L2_REG), name="Body-Conv2D")(x)
