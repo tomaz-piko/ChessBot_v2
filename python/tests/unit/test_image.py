@@ -116,7 +116,6 @@ class TestGameImage(unittest.TestCase):
         self.assertTrue(np.all(image[0, -4] == 0))
         self.assertTrue(np.all(image[0, -5] == 0))
 
-
     def test_ruy_lopez_white_t0(self): # Checking black and white pieces but from white perspective
         t = 0
         board = ruy_lopez.clone()
