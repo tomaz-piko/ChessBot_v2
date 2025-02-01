@@ -3,32 +3,8 @@ import shutil
 from configs import selfplayConfig as config
 from rchess import Board
 import numpy as np
+import argparse
 
-
-# Inform the user about the deletion of the existing data
-# prompt for confirmation
-print("This script will delete the contents of the following directories:")
-print("    - ../data/")
-prompt = input("Do you want to proceed? (y/n): ")
-if prompt.lower() != "y":
-    print("Exiting...")
-    exit()
-
-# If existing delete & create following directories:
-#    - ../data/
-#    - ../data/conversion_data/
-#    - ../data/logs/
-#    - ../data/models/
-data_dir = f"{config['project_dir']}/data"
-if os.path.exists(data_dir):
-    shutil.rmtree(data_dir)
-
-os.makedirs(data_dir)
-os.makedirs(f"{data_dir}/conversion_data")
-os.makedirs(f"{data_dir}/logs")
-os.makedirs(f"{data_dir}/models")
-os.makedirs(f"{data_dir}/selfplay_data")
-print("Data directory has been successfully created.")
 
 # Create conversion data from random histories from games
 random_fens = [
@@ -53,32 +29,68 @@ random_fens = [
     "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 1 2",
     "rnbqkbnr/pppppppp/8/4P3/8/2N5/PPP1PPPP/R1BQKBNR w KQkq - 0 1"
 ]
-histories = []
-while len(histories) < config["num_vl_searches"] * 4:
-    # Take a random fen
-    fen = np.random.choice(random_fens)
-    board = Board(fen)
-    # play 5 to 15 random moves
-    num_moves = np.random.randint(5, 15)
-    for _ in range(num_moves):
-        move = np.random.choice(board.legal_moves())
-        board.push(move)
-        terminal, _ = board.terminal()
-        if terminal:
-            break
-        history, _ = board.history(config["history_perspective_flip"])
-        histories.append(history)
-        if len(histories) == config["num_vl_searches"] * 4:
-            break
 
-print(f"Generated {len(histories)} random histories.")
-# Save the histories as numpy arrays in zip files
-np.savez_compressed(f"{data_dir}/conversion_data/histories.npz", histories=np.array(histories, dtype=np.int64))
-print("Histories have been saved.")
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Initialize models and directories for ChessBot.')
+    parser.add_argument('--skip-model', action='store_true', help='Skip model initialization.')
 
-from model import generate_model, save_as_trt_model
+    args = parser.parse_args()
 
-# Generate the model and save it as a TensorRT model
-model = generate_model()
-model.save(f"{data_dir}/models/model.keras")
-save_as_trt_model(model, precision_mode="FP16", build_model=True)
+    # Inform the user about the deletion of the existing data
+    # prompt for confirmation
+    print("This script will delete the contents of the following directories:")
+    print("    - ../data/")
+    prompt = input("Do you want to proceed? (y/n): ")
+    if prompt.lower() != "y":
+        print("Exiting...")
+        exit()
+
+    # If existing delete & create following directories:
+    #    - ../data/
+    #    - ../data/conversion_data/
+    #    - ../data/logs/
+    #    - ../data/models/
+    data_dir = f"{config['project_dir']}/data"
+    if os.path.exists(data_dir):
+        shutil.rmtree(data_dir)
+
+    os.makedirs(data_dir)
+    os.makedirs(f"{data_dir}/conversion_data")
+    os.makedirs(f"{data_dir}/logs")
+    os.makedirs(f"{data_dir}/models")
+    os.makedirs(f"{data_dir}/selfplay_data")
+    print("Data directory has been successfully created.")
+    
+    histories = []
+    while len(histories) < config["num_vl_searches"] * 4:
+        # Take a random fen
+        fen = np.random.choice(random_fens)
+        board = Board(fen)
+        # play 5 to 15 random moves
+        num_moves = np.random.randint(5, 15)
+        for _ in range(num_moves):
+            move = np.random.choice(board.legal_moves())
+            board.push(move)
+            terminal, _ = board.terminal()
+            if terminal:
+                break
+            history, _ = board.history(config["history_perspective_flip"])
+            histories.append(history)
+            if len(histories) == config["num_vl_searches"] * 4:
+                break
+
+    print(f"Generated {len(histories)} random histories.")
+    # Save the histories as numpy arrays in zip files
+    np.savez_compressed(f"{data_dir}/conversion_data/histories.npz", histories=np.array(histories, dtype=np.int64))
+    print("Histories have been saved.")
+
+    if args.skip_model:
+        print("Skipping model initialization.")
+        exit()
+
+    from model import generate_model, save_as_trt_model
+
+    # Generate the model and save it as a TensorRT model
+    model = generate_model()
+    model.save(f"{data_dir}/models/model.keras")
+    save_as_trt_model(model, precision_mode="FP16", build_model=True)
