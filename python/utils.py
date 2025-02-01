@@ -12,9 +12,9 @@ def convert_u64_to_np(images: list) -> np.array:
     Returns:
         np.array: Numpy array of shape (batch_size, 117, 8, 8) representing the board state        
     """
-    x = np.array(images, dtype=np.uint64)
+    x = np.array(images).astype(np.uint64)
     if len(x.shape) == 1:
-        x = np.array([x], dtype=np.uint64)
+        x = np.array([x]).astype(np.uint64)
     h = x[:, -1]
     x = x[:, :-1]
     batch_size = x.shape[0]

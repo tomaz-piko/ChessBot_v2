@@ -78,6 +78,45 @@ class TestGameImage(unittest.TestCase):
         half_move_plane_idx = -1
         self.assertTrue(np.all(image[0, half_move_plane_idx] == 2 / 100))
 
+    def test_castling_planes_starting_pos(self):
+        board = Board()
+        hist, _ = board.history(flip)
+        image = convert_u64_to_np(hist)
+        self.assertTrue(np.all(image[0, -2] == 1))
+        self.assertTrue(np.all(image[0, -3] == 1))
+        self.assertTrue(np.all(image[0, -4] == 1))
+        self.assertTrue(np.all(image[0, -5] == 1))
+
+    def test_castling_planes_after_king_move(self):
+        board = Board()
+        board.push_uci("e2e4")
+        board.push_uci("e7e5")
+        board.push_uci("g1f3")
+        board.push_uci("g8f6")
+        hist, _ = board.history(flip)
+        image = convert_u64_to_np(hist)
+        self.assertTrue(np.all(image[0, -2] == 1))
+        self.assertTrue(np.all(image[0, -3] == 1))
+        self.assertTrue(np.all(image[0, -4] == 1))
+        self.assertTrue(np.all(image[0, -5] == 1))
+
+        board.push_uci("e1e2")
+        hist, _ = board.history(flip)
+        image = convert_u64_to_np(hist)
+        self.assertTrue(np.all(image[0, -2] == 0))
+        self.assertTrue(np.all(image[0, -3] == 0))
+        self.assertTrue(np.all(image[0, -4] == 1))
+        self.assertTrue(np.all(image[0, -5] == 1))
+
+        board.push_uci("e8e7")
+        hist, _ = board.history(flip)
+        image = convert_u64_to_np(hist)
+        self.assertTrue(np.all(image[0, -2] == 0))
+        self.assertTrue(np.all(image[0, -3] == 0))
+        self.assertTrue(np.all(image[0, -4] == 0))
+        self.assertTrue(np.all(image[0, -5] == 0))
+
+
     def test_ruy_lopez_white_t0(self): # Checking black and white pieces but from white perspective
         t = 0
         board = ruy_lopez.clone()
