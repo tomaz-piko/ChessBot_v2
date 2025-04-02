@@ -7,7 +7,7 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-# Available commands are [init, setup, test, selfplay, strenght_test]
+# Available commands are [init, setup, test, train, selfplay, strenght_test]
 COMMAND="$1"
 shift
 
@@ -27,6 +27,10 @@ elif [ "$COMMAND" == "setup" ]; then
 elif [ "$COMMAND" == "test" ]; then
     python3 -m unittest discover -s python/tests
     exit 0
+elif [ "$COMMAND" == "train" ]; then
+    cd python
+    python3 train.py "$@"
+    exit 0
 elif [ "$COMMAND" == "selfplay" ]; then
     cd python
     python3 -m selfplay "$@"
@@ -37,6 +41,9 @@ elif [ "$COMMAND" == "strength_test" ]; then
     exit 0
 elif [ "$COMMAND" == "list" ]; then
     echo "Available commands are [init, setup, test, selfplay, strength_test]"
+    exit 0
+elif [ "$COMMAND" == "tensorboard" ]; then
+    tensorboard --logdir data/logs
     exit 0
 else
     echo "Invalid command: $COMMAND"

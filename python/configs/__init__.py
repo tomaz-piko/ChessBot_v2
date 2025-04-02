@@ -13,6 +13,9 @@ _ints = [
     "num_mcts_sampling_moves",
     "num_vl_searches",
     "buffer_size",
+    "checkpoint_interval",
+    "sts_test_interval",
+    "sts_num_actors",
 
     # Model
     "conv_filters",
@@ -34,9 +37,11 @@ _floats = [
     "pb_c_base",
     "pb_c_factor",
     "pb_c_init",
+    "learning_rate",
+    "sts_time_limit",
+    "sampling_ratio",
 
     # Model
-    "learning_rate",
     "l2_regularization",
     "policy_head_loss_weight",
     "value_head_loss_weight",
@@ -47,6 +52,7 @@ _bools = [
     # Config
     "history_perspective_flip",
     "root_exploration_noise",
+    "save_used_samples",
 
     # Model
     "use_bias_on_output",
@@ -68,12 +74,13 @@ def get_config(baseconfig, section: str):
 
 
 _baseconfig = configparser.ConfigParser()
-_baseconfig.read(f"{current_dir}/config.toml")
+_baseconfig.read(os.path.join(current_dir, "config.toml"))
 
 defaultConfig = get_config(_baseconfig, "DEFAULT")
 selfplayConfig = get_config(_baseconfig, "selfplay")
 trainingConfig = get_config(_baseconfig, "training")
+engineplayConfig = get_config(_baseconfig, "engineplay")
 
 _modelconfig = configparser.ConfigParser()
-_modelconfig.read(f"{current_dir}/model.toml")
+_modelconfig.read(os.path.join(current_dir, "model.toml"))
 modelConfig = get_config(_modelconfig, defaultConfig["model_size"])

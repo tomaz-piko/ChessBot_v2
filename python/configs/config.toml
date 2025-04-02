@@ -1,6 +1,7 @@
 [DEFAULT]
 model_size = sm
-project_dir = /home/tomaz/ChessBot_v2/
+project_dir = /home/tomaz/ChessBot_v2
+restore_dir = /home/tomaz/ChessBot_v2_trash
 
 # Model
 # History
@@ -33,10 +34,22 @@ num_vl_searches = 16
 
 [training]
 batch_size = 1024
+sampling_ratio = 0.6
+learning_rate = 0.01
+checkpoint_interval = 2400
+sts_test_interval = 480
+sts_time_limit = 0.75
+sts_num_actors = 3
+save_used_samples = true
 
 [selfplay]
 buffer_size = 10000
 root_exploration_noise = true
 num_mcts_sims = 800
 num_mcts_sampling_moves = 30
-moves_softmax_temp = 1.0
+moves_softmax_temp = 1.35
+
+[engineplay]
+root_exploration_noise = false
+num_mcts_sampling_moves = 0
+moves_softmax_temp = 0.0

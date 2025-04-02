@@ -50,19 +50,28 @@ if __name__ == "__main__":
     #    - ../data/conversion_data/
     #    - ../data/logs/
     #    - ../data/models/
-    data_dir = f"{config['project_dir']}/data"
+    data_dir = os.path.join(config['project_dir'], 'data')
     if os.path.exists(data_dir):
         shutil.rmtree(data_dir)
 
     os.makedirs(data_dir)
-    os.makedirs(f"{data_dir}/conversion_data")
-    os.makedirs(f"{data_dir}/logs")
-    os.makedirs(f"{data_dir}/models")
-    os.makedirs(f"{data_dir}/selfplay_data")
+    os.makedirs(os.path.join(data_dir, 'conversion_data'))
+    os.makedirs(os.path.join(data_dir, 'logs'))
+    os.makedirs(os.path.join(data_dir, 'models'))
+    os.makedirs(os.path.join(data_dir, 'models', 'latest'))
+    os.makedirs(os.path.join(data_dir, 'models', 'tmp'))
+    os.makedirs(os.path.join(data_dir, 'selfplay_data'))
+    os.makedirs(os.path.join(data_dir, 'train_data'))
     print("Data directory has been successfully created.")
+
+
+    if config['restore_dir'] is not None:
+        if not os.path.exists(config['restore_dir']):
+            os.makedirs(config['restore_dir'])
+            print("Restore directory has been successfully created.")
     
     histories = []
-    while len(histories) < config["num_vl_searches"] * 4:
+    while len(histories) < config["num_vl_searches"] * 8:
         # Take a random fen
         fen = np.random.choice(random_fens)
         board = Board(fen)
@@ -76,21 +85,21 @@ if __name__ == "__main__":
                 break
             history, _ = board.history(config["history_perspective_flip"])
             histories.append(history)
-            if len(histories) == config["num_vl_searches"] * 4:
+            if len(histories) == config["num_vl_searches"] * 8:
                 break
 
     print(f"Generated {len(histories)} random histories.")
     # Save the histories as numpy arrays in zip files
-    np.savez_compressed(f"{data_dir}/conversion_data/histories.npz", histories=np.array(histories, dtype=np.int64))
+    np.savez_compressed(os.path.join(data_dir, 'conversion_data', 'histories.npz'), histories=np.array(histories, dtype=np.int64))
     print("Histories have been saved.")
 
     if args.skip_model:
         print("Skipping model initialization.")
         exit()
 
-    from model import generate_model, save_as_trt_model
+    from model import generate_model, update_trt_model
 
     # Generate the model and save it as a TensorRT model
     model = generate_model()
-    model.save(f"{data_dir}/models/model.keras")
-    save_as_trt_model(model, precision_mode="FP16", build_model=True)
+    model.save(os.path.join(data_dir, 'models', 'model.keras'))
+    update_trt_model(config, model_version="latest", precision_mode="FP16", build_model=True)

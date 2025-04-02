@@ -1,27 +1,26 @@
 [DEFAULT]
-learning_rate = 0.01
 l2_regularization = 1e-4
 policy_head_loss_weight = 1.0
 value_head_loss_weight = 1.0
 sgd_momentum = 0.9
 sgd_nesterov = false
 use_bias_on_output = true
-conv_kernel_initializer = 
+conv_kernel_initializer = he_normal
 
 [sm]
 conv_filters = 32
 residual_blocks = 4
 policy_head_filters = 73
 policy_head_dense = 1858
-value_head_filters = 16
-value_head_dense = 64
+value_head_filters = 8
+value_head_dense = 128
 
 [md]
 conv_filters = 64
 residual_blocks = 6
 policy_head_filters = 73
 policy_head_dense = 1858
-value_head_filters = 32
+value_head_filters = 16
 value_head_dense = 128
 
 [lg]
@@ -30,4 +29,4 @@ residual_blocks = 8
 policy_head_filters = 73
 policy_head_dense = 1858
 value_head_filters = 32
-value_head_dense = 256
+value_head_dense = 128

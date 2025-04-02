@@ -27,7 +27,7 @@ NUM_PLANES = (6 * 2 + R) * T + 5
 
 CONV_FILTERS = modelConfig["conv_filters"]
 NUM_RESIDUAL_BLOCKS = modelConfig["residual_blocks"]
-CONV_KERNEL_INITIALIZER = modelConfig["conv_kernel_initializer"] if modelConfig["conv_kernel_initializer"] else None #"he_normal"
+CONV_KERNEL_INITIALIZER = config.get(modelConfig["conv_kernel_initializer"], None)
 USE_BIAS_ON_OUTPUTS = modelConfig["use_bias_on_output"]
 VALUE_HEAD_FILTERS = modelConfig["value_head_filters"]
 VALUE_HEAD_DENSE = modelConfig["value_head_dense"]
@@ -38,7 +38,6 @@ VALUE_HEAD_LOSS_WEIGHT = modelConfig["value_head_loss_weight"]
 L2_REG = modelConfig["l2_regularization"]
 SGD_MOMENTUM = modelConfig["sgd_momentum"]
 SGD_NESTEROV = modelConfig["sgd_nesterov"]
-LEARNING_RATE = modelConfig["learning_rate"]
 
 @tf.function
 def predict_fn(trt_func, images):
@@ -60,11 +59,10 @@ def reshape_planes(planes):
     y = tf.cast(planes[:, -1:], tf.float32)[:, :, tf.newaxis, tf.newaxis] / tf.fill([1, 1, 8, 8], 99.0)
     return tf.concat([x, y], axis=1)
 
-# TODO CHECK PLANE RESHAPING CORECTNESS
 def generate_model():
     # Define the input layer
     input_layer = Input(shape=(NUM_PLANES), name="input_layer", dtype=tf.int64)
-    x = reshape_planes(input_layer[:, :-1])
+    x = reshape_planes(input_layer)
 
     # Define the body
     x = Conv2D(filters=CONV_FILTERS , kernel_size=3, strides=1, data_format="channels_first", padding="same", use_bias=False, kernel_initializer=CONV_KERNEL_INITIALIZER, kernel_regularizer=l2(L2_REG), name="Body-Conv2D")(x)
@@ -96,7 +94,7 @@ def generate_model():
     policy_head = Dense(POLICY_HEAD_DENSE, activation='linear', use_bias=USE_BIAS_ON_OUTPUTS, kernel_regularizer=l2(L2_REG), name="policy_head")(policy_head)
 
     # Define the optimizer
-    optimizer = SGD(learning_rate=LEARNING_RATE, nesterov=SGD_NESTEROV, momentum=SGD_MOMENTUM)
+    optimizer = SGD(learning_rate=0.2, nesterov=SGD_NESTEROV, momentum=SGD_MOMENTUM)
 
     # Define the model
     model = Model(inputs=input_layer, outputs=[value_head, policy_head])
@@ -107,28 +105,39 @@ def generate_model():
             "policy_head": CategoricalCrossentropy(from_logits=True)
         },
         loss_weights={
-            "value_head": VALUE_HEAD_LOSS_WEIGHT,
-            "policy_head": POLICY_HEAD_LOSS_WEIGHT
-        },
-        metrics=["accuracy"]
+            "value_head": 1.0,
+            "policy_head": 1.0
+        }
     )
     return model
 
-def save_as_trt_model(model, precision_mode="FP32", build_model=False):
+
+def update_trt_model(config, model_version: str = "latest", precision_mode: str = "FP32", build_model: bool = True):
+    """ Save new model as a TensorRT model or update the existing one.
+
+    Args:
+        config (dict): A dictionary containing the configuration for the project.
+        model_version (str, optional): How to label the directory containing models. Defaults to "latest".
+        precision_mode (str, optional): Precision mode. Defaults to "FP32".
+        build_model (bool, optional): Whether to build model beforehand or after first use. Defaults to False.
+
+    """
+    from tensorflow.python.compiler.tensorrt import trt_convert as trt
     def input_fn():
-        np_data = np.load(f"{config['project_dir']}/data/conversion_data/histories.npz")
+        np_data = np.load(os.path.join(config['project_dir'], 'data', 'conversion_data', 'histories.npz'))
         histories = np_data["histories"]
         # Yield the histories in batches of size defaultConfig["batch_size"]
         for i in range(0, len(histories), config["num_vl_searches"]):
             yield (histories[i:i + config["num_vl_searches"]],)
+    
+    model_save_path = os.path.join(config['project_dir'], 'data', 'models', model_version, 'saved_model')
 
-    from tensorflow.python.compiler.tensorrt import trt_convert as trt
+    tf_model = tf.keras.models.load_model(os.path.join(config['project_dir'], 'data', 'models', 'model.keras'))
+    tf_model.save(model_save_path)
 
-    model_save_path = f"{config['project_dir']}/data/models/saved_model"
-    model.save(model_save_path)
     conversion_params = trt.TrtConversionParams(
         precision_mode=precision_mode,
-        use_calibration=True if precision_mode == "INT8" else False,
+        use_calibration=True,
     )
 
     converter = trt.TrtGraphConverterV2(
@@ -146,8 +155,23 @@ def save_as_trt_model(model, precision_mode="FP32", build_model=False):
 
     converter.save(model_save_path)
 
-def load_as_trt_model():
-    model_save_path = f"{config['project_dir']}/data/models/saved_model"
+
+def load_as_trt_model(model_version: str = "latest"):
+    """ Load a TensorRT model.
+
+    Args:
+        model_version (str, optional): Name of directory that contains the model. Defaults to "latest".
+
+    Raises:
+        FileNotFoundError: Error if models is not found
+
+    Returns:
+        (func, obj): A tuple containing the TensorRT inference function and the loaded model.
+    """
+    model_save_path = os.path.join(config['project_dir'], 'data', 'models', model_version, 'saved_model')
+    if not os.path.exists(model_save_path):
+        raise FileNotFoundError(f"Model not found at {model_save_path}")
+
     loaded_model = tf.saved_model.load(model_save_path)
     trt_func = loaded_model.signatures['serving_default']
-    return trt_func, loaded_model 
+    return trt_func, loaded_model

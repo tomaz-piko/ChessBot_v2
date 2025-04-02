@@ -76,10 +76,11 @@ cdef class MCTS:
         return self.history_flip
 
     @cython.boundscheck(False)
-    @cython.nonecheck(False)
     @cython.wraparound(False)
     @cython.initializedcheck(False)
     cpdef find_best_move(self, object board, Node root, object trt_func, unsigned int num_sims, float time_limit, bint debug):
+        assert (num_sims > 0) != (time_limit > 0.0), "Only one & at least one, either num_sims or time_limit, must be greater than 0."
+
         cdef bint tree_reused = True
         cdef unsigned int move_num
         cdef list nodes_to_eval
@@ -100,8 +101,8 @@ cdef class MCTS:
         cdef Node node
         cdef unsigned int depth_to_root
         cdef double start_time, end_time
+        cdef bint time_limit_set = True if time_limit > 0.0 else False
 
-        start_time = time.time()
 
         if root is None or root.is_leaf():
             root = Node(0.0)
@@ -122,10 +123,17 @@ cdef class MCTS:
         if not tree_reused and self.root_exploration_noise:
             add_exploration_noise(root, self.rng, self.root_dirichlet_alpha, self.root_exploration_fraction)
 
+        start_time = time.time()
+
         while 1:
-            if root.N >= num_sims:
-                break
-            nodes_to_find = self.num_vl_searches if root.N + self.num_vl_searches <= num_sims else num_sims - root.N
+            if time_limit_set:
+                if time.time() - start_time > time_limit:
+                    break
+                nodes_to_find = self.num_vl_searches
+            else:
+                if root.N >= num_sims:
+                    break
+                nodes_to_find = self.num_vl_searches if root.N + self.num_vl_searches <= num_sims else num_sims - root.N
             nodes_found = 0
             nodes_to_eval = []
             eval_nodes_legal_moves = []
@@ -150,7 +158,7 @@ cdef class MCTS:
                     value = 0.5 if is_drawn else 0.0
                     update(root, tmp_board.moves_history(depth_to_root), value)
                     if debug:
-                        node.debug_info["init_value"] = value
+                        node.debug_info["init_value"] = flip_value(value)
                     failsafe += 1
                     continue
 
@@ -181,11 +189,12 @@ cdef class MCTS:
                 value = value_to_01(values[idx].item())
                 update(root, moves_to_nodes[idx], value)
                 if debug:
-                    nodes_to_eval[idx].debug_info["init_value"] = value
+                    nodes_to_eval[idx].debug_info["init_value"] = flip_value(value)
 
         end_time = time.time()
         if debug:
             root.debug_info["elapsed_time"] = end_time - start_time
+        
         move_num = self.select_best_move(root, temp=self.moves_softmax_temp if board.ply() <= self.num_mcts_sampling_moves else 0.0)
         child_visits = self.calculate_search_statistics(root)
         return move_num, root, child_visits

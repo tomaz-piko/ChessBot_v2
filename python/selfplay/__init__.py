@@ -4,6 +4,7 @@ import chess.syzygy as syzygy
 from datetime import datetime
 from multiprocessing import Process, Manager
 from configs import selfplayConfig
+import os
 
 class GamesBuffer:
     def __init__(self, save_path, max_size=1024):
@@ -25,9 +26,9 @@ class GamesBuffer:
 
     def flush(self):
         # Save the data to disk
-        images_np = np.array(self.images[:self.max_size])
-        search_stats_np = np.array(self.search_stats[:self.max_size])
-        terminal_values_np = np.array(self.terminal_values[:self.max_size])
+        images_np = np.array(self.images[:self.max_size]).astype(np.int64)
+        search_stats_np = np.array(self.search_stats[:self.max_size]).astype(np.float32)
+        terminal_values_np = np.array(self.terminal_values[:self.max_size]).astype(np.int64)
 
         timestamp = datetime.now().strftime('%F_%T.%f')[:-3]
         num_positions = images_np.shape[0]
@@ -47,13 +48,13 @@ def play_games(config, num_games, games_count, buffer_size=None, use_fake_model=
         gpu_devices = tf.config.experimental.list_physical_devices('GPU')
         tf.config.experimental.set_memory_growth(gpu_devices[0], True)
         from model import load_as_trt_model
-        trt_func, _ = load_as_trt_model()
-    from mcts import MCTS
+        trt_func, _ = load_as_trt_model(model_version="latest")
+    from mcts.c import MCTS
 
     if buffer_size is None:
         buffer_size = config['buffer_size']
-    tablebase = syzygy.open_tablebase(f"{config['project_dir']}/syzygy/3-4-5")
-    buffer = GamesBuffer(f"{config['project_dir']}/data/selfplay_data", buffer_size)
+    tablebase = syzygy.open_tablebase(os.path.join(config['project_dir'], 'syzygy/3-4-5'))
+    buffer = GamesBuffer(os.path.join(config['project_dir'], 'data', 'selfplay_data'), buffer_size)
     mctsSearch = MCTS(config)
 
     # Play the games until games_count is reached
