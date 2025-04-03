@@ -15,7 +15,12 @@ parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 cd "$parent_path"
 
 # Check if the command is valid
-if [ "$COMMAND" == "init" ]; then
+if [ "$COMMAND" == "run" ]; then
+    export TF_CPP_MIN_LOG_LEVEL=3
+    cd python
+    python3 engine.py "$@"
+    exit 0
+elif [ "$COMMAND" == "init" ]; then
     cd python
     python3 initialize.py "$@"
     exit 0
