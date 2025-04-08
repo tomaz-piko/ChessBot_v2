@@ -1,4 +1,5 @@
 from .c import Node, MCTS
+from rchess import Move
 
 def as_str(value):
     if value < 0:
@@ -12,15 +13,61 @@ def as_percentage(value):
         str = " " + str
     return str
 
-def debug_search(board, root: Node):
+class PV:
+    def __init__(self, moves: list = [], score: float = 0.0, visits: int = 0):
+        self.moves = moves
+        self.score = score
+        self.visits = visits
+
+    def __str__(self):
+        moves_str = " ".join([move for move in self.moves])
+        return f"{self.score:.6f} | {moves_str}"
+    
+    def __repr__(self):
+        return str(self)
+
+def get_pv(root: Node, multi_pv: int = 1, max_depth: int = 5):
+    # Get keys from the root node sorted by N
+    moves = sorted(root.children.keys(), key=lambda x: root[x].N, reverse=True)
+    pvs = []
+    pv_moves = []
+
+    for i in range(min(multi_pv, len(moves))):
+        move_num = moves[i]
+        move_str = Move(move_num).uci()
+        pv_moves.append(move_str)
+        node = root[move_num]
+
+        score = node.W / node.N if node.N > 0 else 0.0
+        visits = node.N
+
+        depth = 0
+        while depth < max_depth and node.children:
+            move_num = max(node.children, key=lambda x: node[x].N)
+            node = node[move_num]
+            move_str = Move(move_num).uci()
+            pv_moves.append(move_str)
+            depth += 1
+        
+        pvs.append(PV(pv_moves, score, visits))
+        pv_moves = []
+
+    return pvs
+
+def debug_search(board, root: Node, multi_pv: int = 1, max_depth: int = 5):
     assert root, "No root node provided."
     sorted_children = sorted(root.children.values(), key=lambda x: x.N, reverse=True)
     best_child = list(sorted_children)[0]
     print(board)
     time = root.debug_info["elapsed_time"] if "elapsed_time" in root.debug_info else 0.0
     print(f"Elapsed time: {time:.2f}s")
-    print(f"Visits: {root.N}")
-    print(f"Eval: {as_str(best_child.W / best_child.N) if best_child.N > 0 else 0.0}")
+    print(f"Total visits: {root.N}")
+    pvs = get_pv(root, multi_pv, max_depth)
+    print("-" * 110)
+    print("PV:")
+    for i, pv in enumerate(pvs):
+        print(f"{i+1}. {pv}")
+    print("-" * 110)
     print("%-16s %-10s %-14s %-16s %-16s %-18s %-8s" %("Move", "Visits", "Policy", "Avg. value", "UCB", "Q+U", "Raw NN Value"))
     print("-" * 110)
     for child in sorted_children:

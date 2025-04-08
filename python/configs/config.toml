@@ -19,11 +19,11 @@ root_exploration_fraction = 0.25
 
 ## Fpu
 fpu_root = 1.0
-fpu_leaf = 0.3
+fpu_leaf = 0.0
 
 ## UCB constants
 pb_c_base = 19652
-pb_c_init = 1.25
+pb_c_init = 2.5
 pb_c_factor = 1.0
 
 ## Temperatures

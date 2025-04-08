@@ -78,6 +78,104 @@ cdef class MCTS:
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @cython.initializedcheck(False)
+    cpdef expand_root(self, object board, Node root, object trt_func, bint debug):
+        if root is None:
+            root = Node(0.0) 
+        cdef cnp.ndarray[BATCH_DTYPE_t, ndim=2] batch = np.zeros((self.num_vl_searches, self.num_planes), dtype=BATCH_DTYPE)
+        cdef long[:, :] batch_mw = batch
+
+        root.to_play = board.to_play()
+        history, _ = board.history(self.history_flip)
+
+        for idx in range(self.num_planes):
+            batch_mw[0, idx] = history[idx]
+        _, policy_logits = make_predictions(
+                trt_func=trt_func,
+                batch=batch
+            )
+        self.expand_and_evaluate_node(root, policy_logits[0], board.legal_moves_tuple(), debug)
+        return root
+
+    @cython.nonecheck(False)
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.initializedcheck(False)
+    cpdef search(self, object board, Node root, object trt_func, bint debug):
+        cdef unsigned int move_num
+        cdef list nodes_to_eval = []
+        cdef list moves_to_nodes = []
+        cdef list moves_to_node = []
+        cdef list eval_nodes_legal_moves = []
+        cdef unsigned int failsafe = 0
+        cdef unsigned int nodes_found = 0
+        cdef unsigned int nodes_to_find = self.num_vl_searches
+        cdef object tmp_board
+        cdef float fpu
+        cdef bint terminal, is_drawn
+        cdef cnp.ndarray[DTYPE_t, ndim=2] values
+        cdef cnp.ndarray[DTYPE_t, ndim=2] policy_logits
+        cdef cnp.ndarray[BATCH_DTYPE_t, ndim=2] batch = np.zeros((self.num_vl_searches, self.num_planes), dtype=BATCH_DTYPE)
+        cdef long[:, :] batch_mw = batch
+        cdef list history
+        cdef Py_ssize_t idx
+        cdef Node node
+        cdef unsigned int depth_to_root
+
+        while nodes_found < nodes_to_find and failsafe < 2:
+            depth_to_root = 0
+            node = root
+            tmp_board = board.clone()
+            while not node.is_leaf():
+                fpu = self.fpu_leaf if depth_to_root > 0 else self.fpu_root
+                move_num = select_child(node, pb_c_base=self.pb_c_base, pb_c_init=self.pb_c_init, pb_c_factor=self.pb_c_factor, fpu=fpu, debug=debug)
+                node = node[move_num]
+                tmp_board.push_num(move_num)
+                depth_to_root += 1
+            
+            terminal, is_drawn = tmp_board.mid_search_terminal(depth_to_root)
+            if terminal:
+                # If a position is not drawn, the only other possible outcome is checkmate
+                # Because the move has already been played (while traversing the tree), 
+                # this node is from the perspective of the checkmated player
+                value = 0.5 if is_drawn else 0.0
+                update(root, tmp_board.moves_history(depth_to_root), value)
+                if debug:
+                    node.debug_info["init_value"] = flip_value(value)
+                failsafe += 1
+                continue
+
+            moves_to_node = tmp_board.moves_history(depth_to_root)
+            add_vloss(root, moves_to_node)
+
+            node.to_play = tmp_board.to_play()
+
+            nodes_to_eval.append(node)
+            moves_to_nodes.append(moves_to_node)
+            eval_nodes_legal_moves.append(tmp_board.legal_moves_tuple())
+            history, _ = tmp_board.history(self.history_flip)
+            for idx in range(self.num_planes):
+                batch_mw[nodes_found, idx] = history[idx]
+            nodes_found += 1
+
+        if nodes_found == 0:
+            return root
+
+        values, policy_logits = make_predictions(
+            trt_func=trt_func,
+            batch=batch
+        )
+        
+        for idx in range(nodes_found):
+            self.expand_and_evaluate_node(nodes_to_eval[idx], policy_logits[idx], eval_nodes_legal_moves[idx], debug)
+            value = value_to_01(values[idx].item())
+            update(root, moves_to_nodes[idx], value)
+            if debug:
+                nodes_to_eval[idx].debug_info["init_value"] = flip_value(value)
+        return root
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.initializedcheck(False)
     cpdef find_best_move(self, object board, Node root, object trt_func, unsigned int num_sims, float time_limit, bint debug):
         assert (num_sims > 0) != (time_limit > 0.0), "Only one & at least one, either num_sims or time_limit, must be greater than 0."
 
@@ -86,11 +184,13 @@ cdef class MCTS:
         cdef list nodes_to_eval
         cdef list moves_to_nodes
         cdef list moves_to_node
+        cdef list eval_nodes_legal_moves
         cdef unsigned int failsafe
         cdef unsigned int nodes_found
+        cdef unsigned int nodes_to_find
         cdef object tmp_board
         cdef float fpu
-        cdef bint terminal, winner
+        cdef bint terminal, is_drawn
         cdef cnp.ndarray[DTYPE_t, ndim=2] values
         cdef cnp.ndarray[DTYPE_t, ndim=2] policy_logits
         cdef cnp.ndarray[DTYPE_t, ndim=1] child_visits
@@ -259,7 +359,7 @@ cdef class MCTS:
             child_visits_mw[i] /= _sum
         return child_visits
 
-    cdef select_best_move(self, Node node, float temp):
+    cpdef select_best_move(self, Node node, float temp):
         cdef list moves = list(node.children.keys())
         cdef cnp.ndarray probs = np.array([node[move].N for move in moves])
         if temp == 0.0:

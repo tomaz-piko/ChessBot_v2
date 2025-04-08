@@ -13,3 +13,4 @@ python/*.egg-info
 **/**.html
 syzygy/
 **/**.log
+lichess-bot/

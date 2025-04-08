@@ -16,9 +16,14 @@ cd "$parent_path"
 
 # Check if the command is valid
 if [ "$COMMAND" == "run" ]; then
-    export TF_CPP_MIN_LOG_LEVEL=3
+    #export TF_CPP_MIN_LOG_LEVEL=3
     cd python
     python3 engine.py "$@"
+    exit 0
+elif [ "$COMMAND" == "lichess-bot" ]; then
+    export TF_CPP_MIN_LOG_LEVEL=3
+    cd lichess-bot
+    python3 lichess-bot.py "$@"
     exit 0
 elif [ "$COMMAND" == "init" ]; then
     cd python

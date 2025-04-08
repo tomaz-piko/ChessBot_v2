@@ -37,12 +37,17 @@ cdef class MCTS:
     cdef dict m_w
     cdef dict m_b
 
+    cpdef expand_root(self, object board, Node root, object trt_func, bint debug)
+
+    cpdef search(self, object board, Node root, object trt_func, bint debug)
+
     cpdef find_best_move(self, object board, Node root, object trt_func, unsigned int num_sims, float time_limit, bint debug)
     
     cpdef get_history_flip(self)
+    
+    cpdef select_best_move(self, Node node, float temp)
 
     cdef void expand_and_evaluate_node(self, Node node, float[:] policy_logits, list legal_moves_tuple, bint debug)
 
     cdef cnp.ndarray calculate_search_statistics(self, Node root)
 
-    cdef select_best_move(self, Node node, float temp)
