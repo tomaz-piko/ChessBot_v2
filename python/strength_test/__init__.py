@@ -94,6 +94,7 @@ def do_strength_test(num_mcts_sims = 0, time_limit = 0.0, num_agents = 1, model_
     processes = {}
     time_start =  datetime.now()
     formatted_timestart = time_start.strftime("%d/%m %H:%M:%S")
+    print(f"Strength test started at {formatted_timestart}")
     stsRating = 0
 
     with Manager() as manager:
@@ -112,7 +113,7 @@ def do_strength_test(num_mcts_sims = 0, time_limit = 0.0, num_agents = 1, model_
     
     time_end = datetime.now()
     formatted_timeend = time_end.strftime("%d/%m %H:%M:%S")
-    print(f"Strength started at {formatted_timestart} and ended at {formatted_timeend}.")
+    print(f"Strength test ended at {formatted_timeend}")
     time_difference = time_end - time_start
     hours, remainder = divmod(time_difference.total_seconds(), 3600)
     minutes, seconds = divmod(remainder, 60)

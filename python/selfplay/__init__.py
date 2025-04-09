@@ -69,6 +69,8 @@ def run_selfplay(num_agents=1, num_games=100, buffer_size=1024, use_fake_model=F
     processes = {}
     time_start =  datetime.now()
     formatted_timestart = time_start.strftime("%d/%m %H:%M:%S")
+    print(f"Self-play started at {formatted_timestart}")
+
     with Manager() as manager:
         games_count = manager.Value('i', 0)
         for i in range(num_agents):
@@ -80,7 +82,7 @@ def run_selfplay(num_agents=1, num_games=100, buffer_size=1024, use_fake_model=F
             p.join()
     time_end = datetime.now()
     formatted_timeend = time_end.strftime("%d/%m %H:%M:%S")
-    print(f"Self-play started at {formatted_timestart} and ended at {formatted_timeend}.")
+    print(f"Self-play ended at {formatted_timeend}")
     time_difference = time_end - time_start
     hours, remainder = divmod(time_difference.total_seconds(), 3600)
     minutes, seconds = divmod(remainder, 60)
