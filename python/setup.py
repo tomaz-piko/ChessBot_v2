@@ -13,6 +13,11 @@ extensions = [
         sources=["selfplay/c.pyx"],
         include_dirs=[numpy.get_include()]
     ),
+    Extension(
+        "strength_test.c", # prepend "python." to the module name if needed
+        sources=["strength_test/c.pyx"],
+        include_dirs=[numpy.get_include()]
+    ),
 ]
 
 setup(

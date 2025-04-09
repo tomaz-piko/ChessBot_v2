@@ -137,7 +137,7 @@ def update_trt_model(config, model_version: str = "latest", precision_mode: str 
 
     conversion_params = trt.TrtConversionParams(
         precision_mode=precision_mode,
-        use_calibration=True,
+        use_calibration=True if precision_mode == "INT8" else False,
     )
 
     converter = trt.TrtGraphConverterV2(

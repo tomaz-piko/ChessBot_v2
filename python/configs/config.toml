@@ -19,7 +19,7 @@ root_exploration_fraction = 0.25
 
 ## Fpu
 fpu_root = 1.0
-fpu_leaf = 0.0
+fpu_leaf = 0.3
 
 ## UCB constants
 pb_c_base = 19652
@@ -34,12 +34,12 @@ num_vl_searches = 16
 
 [training]
 batch_size = 1024
-sampling_ratio = 0.6
-learning_rate = 0.01
+sampling_ratio = 0.75
+learning_rate = 0.02
 checkpoint_interval = 2400
 sts_test_interval = 480
-sts_time_limit = 0.75
-sts_num_actors = 3
+sts_time_limit = 1.0
+sts_num_actors = 6
 save_used_samples = true
 
 [selfplay]

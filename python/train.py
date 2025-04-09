@@ -92,30 +92,35 @@ def load_samples(config, load: int, take: int):
 
     for filename in files:
         file_path = os.path.join(sample_dir, filename)
-        data = np.load(file_path)
-        images = data['images']
-        search_stats = data['search_stats']
-        terminal_values = data['terminal_values']
-        num_file_samples = len(images)
+        try:           
+            data = np.load(file_path)
+            images = data['images']
+            search_stats = data['search_stats']
+            terminal_values = data['terminal_values']
+            num_file_samples = len(images)
 
-        if len(samples) + num_file_samples <= load:
-            for image, search_stat, terminal_value in zip(images, search_stats, terminal_values):
-                samples.append((image, (search_stat, terminal_value)))
-            os.rename(file_path, os.path.join(restore_dir, filename))           
-        else:
-            remaining_samples = load - len(samples)
-            for image, search_stat, terminal_value in zip(images[:remaining_samples], search_stats[:remaining_samples], terminal_values[:remaining_samples]):
-                samples.append((image, (search_stat, terminal_value)))
-             
-            # Save the remaining data back to a new file with a new name, {remaining_samples}_{timestamp}
-            timestamp = datetime.now().strftime('%F_%T.%f')[:-3]
-            new_filename = f"{remaining_samples}_{timestamp}.npz"
-            np.savez(os.path.join(sample_dir, new_filename), 
-                        images=images[remaining_samples:], 
-                        search_stats=search_stats[remaining_samples:],
-                        terminal_values=terminal_values[remaining_samples:])
-            
-            # Delete the old file
+            if len(samples) + num_file_samples <= load:
+                for image, search_stat, terminal_value in zip(images, search_stats, terminal_values):
+                    samples.append((image, (search_stat, terminal_value)))
+                os.rename(file_path, os.path.join(restore_dir, filename))           
+            else:
+                remaining_samples = load - len(samples)
+                for image, search_stat, terminal_value in zip(images[:remaining_samples], search_stats[:remaining_samples], terminal_values[:remaining_samples]):
+                    samples.append((image, (search_stat, terminal_value)))
+                
+                # Save the remaining data back to a new file with a new name, {remaining_samples}_{timestamp}
+                timestamp = datetime.now().strftime('%F_%T.%f')[:-3]
+                new_filename = f"{remaining_samples}_{timestamp}.npz"
+                np.savez(os.path.join(sample_dir, new_filename), 
+                            images=images[remaining_samples:], 
+                            search_stats=search_stats[remaining_samples:],
+                            terminal_values=terminal_values[remaining_samples:])
+                
+                # Delete the old file
+                os.remove(file_path)
+        except Exception as e:
+            print(f"Error loading file {filename}: {e}")
+            # Move the file to the restore directory
             os.remove(file_path)
         if len(samples) >= load:
                 break
@@ -150,8 +155,8 @@ def do_sts_test(config, current_epoch, model_version="latest"):
     import os
 
     time_limit = config.get('sts_time_limit', 1.0)
-    num_actors = config.get('sts_num_actors', 6)
-    sts_rating = do_strength_test(time_limit=time_limit, num_actors=num_actors, model_version=model_version)
+    num_agents = config.get('sts_num_actors', 6)
+    sts_rating = do_strength_test(time_limit=time_limit, num_agents=num_agents, model_version=model_version)
     sts_summary_writter = tf.summary.create_file_writer(os.path.join(config['project_dir'], 'data', 'logs', 'sts'))
     with sts_summary_writter.as_default():
         tf.summary.scalar("ELO Rating", sts_rating, step=current_epoch // config['sts_test_interval'])
@@ -301,6 +306,9 @@ if __name__ == "__main__":
             num_samples = batch_size * epochs
 
             samples = load_samples(config, round(num_samples / config['sampling_ratio']), num_samples)
+            if len(samples) != num_samples:
+                raise ValueError(f"Not enough samples loaded. Expected {num_samples} but got {len(samples)}")
+            
             create_tf_record(config, samples)
 
             print(f"Training model for {epochs} epochs with {num_samples} samples...")

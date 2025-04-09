@@ -1,0 +1,1 @@
+cpdef solve_tests(object mctsSearch, object trt_func, list tests, unsigned int num_mcts_sims, float time_limit)

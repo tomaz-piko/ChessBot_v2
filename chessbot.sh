@@ -42,12 +42,14 @@ elif [ "$COMMAND" == "train" ]; then
     python3 train.py "$@"
     exit 0
 elif [ "$COMMAND" == "selfplay" ]; then
+    export TF_CPP_MIN_LOG_LEVEL=3
     cd python
     python3 -m selfplay "$@"
     exit 0
 elif [ "$COMMAND" == "strength_test" ]; then
+    export TF_CPP_MIN_LOG_LEVEL=3
     cd python
-    python3 strength_test.py "$@"
+    python3 -m strength_test "$@"
     exit 0
 elif [ "$COMMAND" == "list" ]; then
     echo "Available commands are [init, setup, test, selfplay, strength_test]"
