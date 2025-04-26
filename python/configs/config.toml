@@ -61,4 +61,4 @@ moves_softmax_temp = 0.0
 # Resignation during selfplay if Q-value of the best move is below this threshold (0.0 to disable)
 resignation_threshold = 0.0
 # Use tablebase during search
-tablebase_search = false
+tablebase_search = true

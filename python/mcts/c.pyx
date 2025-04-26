@@ -152,23 +152,6 @@ cdef class MCTS:
                 failsafe += 1
                 continue
 
-            # If tablebase search is enabled, check if the position is in the tablebase
-            if self.tablebase_search and tmp_board.pieces_on_board() <= 5:
-                tb_board = TbBoard(tmp_board.fen())
-                wdl = self.tablebase.get_wdl(tb_board)
-                if wdl is not None and not (wdl == 1 or wdl == -1):
-                    if wdl == 0:
-                        value = 0.5
-                    else:
-                        to_play = tmp_board.to_play()
-                        winner = to_play if wdl > 0 else not to_play
-                        value = 1.0 if winner == True else 0.0
-                    update(root, tmp_board.moves_history(depth_to_root), value)
-                    if debug:
-                        node.debug_info["init_value"] = flip_value(value)
-                    failsafe += 1
-                    continue
-
             moves_to_node = tmp_board.moves_history(depth_to_root)
             add_vloss(root, moves_to_node)
 
@@ -341,7 +324,8 @@ cdef class MCTS:
         child_visits = self.calculate_search_statistics(root)
         
         if board.ply() > self.num_mcts_sampling_moves and self.resignation_threshold > 0.0:
-            if child_visits[move_num] < self.resignation_threshold:
+            q = root[move_num].W / root[move_num].N if root[move_num].N > 0 else self.fpu_root
+            if q < self.resignation_threshold:
                 move_num = 0 # Resignation move
 
         return move_num, root, child_visits
