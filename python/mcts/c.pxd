@@ -22,6 +22,7 @@ cdef class Node:
 cdef class MCTS:
     cdef bint history_flip
     cdef bint root_exploration_noise
+    cdef bint tablebase_search
     cdef float root_dirichlet_alpha
     cdef float root_exploration_fraction
     cdef float fpu_root
@@ -29,11 +30,13 @@ cdef class MCTS:
     cdef float pb_c_init
     cdef float pb_c_factor
     cdef float moves_softmax_temp
+    cdef float resignation_threshold
     cdef unsigned int pb_c_base
     cdef unsigned int num_vl_searches
     cdef unsigned int num_planes
     cdef unsigned int num_mcts_sampling_moves
     cdef object rng
+    cdef object tablebase
     cdef dict m_w
     cdef dict m_b
 

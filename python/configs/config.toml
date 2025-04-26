@@ -40,7 +40,6 @@ checkpoint_interval = 2400
 sts_test_interval = 480
 sts_time_limit = 1.0
 sts_num_actors = 6
-save_used_samples = true
 
 [selfplay]
 buffer_size = 10000
@@ -48,8 +47,18 @@ root_exploration_noise = true
 num_mcts_sims = 800
 num_mcts_sampling_moves = 30
 moves_softmax_temp = 1.35
+# Terminate selfplay games and evaluate it based on tablebase
+tablebase_stopage = true
+# Resignation during selfplay if Q-value of the best move is below this threshold (0.0 to disable)
+resignation_threshold = 0.10
+# Use tablebase during search
+tablebase_search = true
 
 [engineplay]
 root_exploration_noise = false
 num_mcts_sampling_moves = 0
 moves_softmax_temp = 0.0
+# Resignation during selfplay if Q-value of the best move is below this threshold (0.0 to disable)
+resignation_threshold = 0.0
+# Use tablebase during search
+tablebase_search = false

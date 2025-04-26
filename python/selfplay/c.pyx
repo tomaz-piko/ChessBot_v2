@@ -39,6 +39,11 @@ cpdef play_game(object mctsSearch, object trt_func, object tablebase, unsigned i
         images.append(history)
         statistics.append(child_visits)
 
+        if move == 0: # Resignation move
+            winner = not board.to_play()
+            outcome_str = "White wins by resignation" if winner == True else "Black wins by resignation"
+            break
+
         board.push_num(move)
         root = root[move]
 
