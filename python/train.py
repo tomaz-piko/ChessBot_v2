@@ -80,6 +80,9 @@ def load_samples(config, load: int, take: int):
     Returns:
         list: An array containing the samples for training. Each sample is a tuple of (images, (search_stats, terminal_values)).
     """
+    print(f"Loading {load} samples from {os.path.join(config['project_dir'], 'data', 'selfplay_data')}")
+    print(f"Taking {take} samples from the loaded samples.")
+    print(f"Sampling ratio: {config['sampling_ratio']}")
     rng = np.random.default_rng()
 
     sample_dir = os.path.join(config['project_dir'], 'data', 'selfplay_data')
@@ -102,12 +105,14 @@ def load_samples(config, load: int, take: int):
             if len(samples) + num_file_samples <= load:
                 for image, search_stat, terminal_value in zip(images, search_stats, terminal_values):
                     samples.append((image, (search_stat, terminal_value)))
+                data.close()
+                del images, search_stats, terminal_values
                 os.rename(file_path, os.path.join(restore_dir, filename))           
             else:
                 remaining_samples = load - len(samples)
                 for image, search_stat, terminal_value in zip(images[:remaining_samples], search_stats[:remaining_samples], terminal_values[:remaining_samples]):
                     samples.append((image, (search_stat, terminal_value)))
-                
+                data.close()                
                 # Save the remaining data back to a new file with a new name, {remaining_samples}_{timestamp}
                 timestamp = datetime.now().strftime('%F_%T.%f')[:-3]
                 new_filename = f"{remaining_samples}_{timestamp}.npz"
@@ -115,7 +120,7 @@ def load_samples(config, load: int, take: int):
                             images=images[remaining_samples:], 
                             search_stats=search_stats[remaining_samples:],
                             terminal_values=terminal_values[remaining_samples:])
-                
+                del images, search_stats, terminal_values
                 # Delete the old file
                 os.remove(file_path)
         except Exception as e:
@@ -124,12 +129,13 @@ def load_samples(config, load: int, take: int):
             os.remove(file_path)
         if len(samples) >= load:
                 break
+    del files
     
     # Randomly select num_selected_samples from samples, each sample can be selected only once
     indices = rng.choice(len(samples), size=take, replace=False)
-    selected_samples = [samples[i] for i in indices]
-    rng.shuffle(selected_samples)
-    return selected_samples
+    samples = [samples[i] for i in indices]
+    rng.shuffle(samples)
+    return samples
 
 
 def create_tf_record(config, samples):
@@ -208,10 +214,11 @@ def train_model(config, training_info, batch_size, epochs):
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath=os.path.join(config['project_dir'], 'data', 'models', 'checkpoint.model.keras'),
         verbose=0,
+        save_freq=100,
     )
     tensorboard_callback = tf.keras.callbacks.TensorBoard(
         log_dir=os.path.join(config['project_dir'], 'data', 'logs', 'fit'),
-        histogram_freq=1,
+        histogram_freq=5,
     )
     lr_callback = tf.keras.callbacks.LearningRateScheduler(
         lambda _: config['learning_rate'],
@@ -237,6 +244,7 @@ def train_model(config, training_info, batch_size, epochs):
         epochs=epoch_to,
         steps_per_epoch=1,
         callbacks=callbacks,
+        validation_split=0.1,
         verbose=1,
     )
 
@@ -272,6 +280,7 @@ if __name__ == "__main__":
 
     checkpoint_interval = config['checkpoint_interval']
     sts_test_interval = config['sts_test_interval']
+    max_epochs_per_cycle = config['max_epochs_per_cycle']
 
     if args.calc:
         total_samples, sampled_samples = count_available_samples(config)
@@ -302,6 +311,8 @@ if __name__ == "__main__":
 
             epochs_until_stop = min(epochs_until_checkpoint, epochs_until_sts_test)
             epochs = min(epochs_possible, epochs_until_stop)
+            if max_epochs_per_cycle > 0:
+                epochs = min(epochs, max_epochs_per_cycle)
 
             num_samples = batch_size * epochs
 

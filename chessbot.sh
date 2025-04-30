@@ -38,6 +38,7 @@ elif [ "$COMMAND" == "test" ]; then
     python3 -m unittest discover -s python/tests
     exit 0
 elif [ "$COMMAND" == "train" ]; then
+    export TF_CPP_MIN_LOG_LEVEL=3
     cd python
     python3 train.py "$@"
     exit 0

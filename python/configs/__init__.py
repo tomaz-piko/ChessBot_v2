@@ -24,6 +24,7 @@ _ints = [
     "value_head_filters",
     "policy_head_dense",
     "value_head_dense",
+    "max_epochs_per_cycle"
 ]
 
 _floats = [

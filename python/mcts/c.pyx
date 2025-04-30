@@ -179,7 +179,6 @@ cdef class MCTS:
     cpdef find_best_move(self, object board, Node root, object trt_func, unsigned int num_sims, float time_limit, bint debug):
         assert (num_sims > 0) != (time_limit > 0.0), "Only one & at least one, either num_sims or time_limit, must be greater than 0."
 
-        cdef bint tree_reused = True
         cdef unsigned int move_num
         cdef list nodes_to_eval
         cdef list moves_to_nodes
@@ -207,7 +206,6 @@ cdef class MCTS:
         if root is None or root.is_leaf():
             root = Node(0.0)
             root.to_play = board.to_play()
-            tree_reused = False
 
         if root.is_leaf():
             history, _ = board.history(self.history_flip)
@@ -220,7 +218,7 @@ cdef class MCTS:
             self.expand_and_evaluate_node(root, policy_logits[0], board.legal_moves_tuple(), debug)
             root.N += 1
 
-        if not tree_reused and self.root_exploration_noise:
+        if self.root_exploration_noise:
             add_exploration_noise(root, self.rng, self.root_dirichlet_alpha, self.root_exploration_fraction)
 
         start_time = time.time()

@@ -105,9 +105,10 @@ def generate_model():
             "policy_head": CategoricalCrossentropy(from_logits=True)
         },
         loss_weights={
-            "value_head": 1.0,
-            "policy_head": 1.0
-        }
+            "value_head": VALUE_HEAD_LOSS_WEIGHT,
+            "policy_head": POLICY_HEAD_LOSS_WEIGHT
+        },
+        metrics=["accuracy"]
     )
     return model
 
