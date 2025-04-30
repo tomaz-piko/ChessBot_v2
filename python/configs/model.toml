@@ -28,7 +28,7 @@ conv_filters = 96
 residual_blocks = 8
 policy_head_filters = 73
 policy_head_dense = 1858
-value_head_filters = 16
+value_head_filters = 32
 value_head_dense = 128
 
 [xl]
@@ -37,4 +37,4 @@ residual_blocks = 10
 policy_head_filters = 73
 policy_head_dense = 1858
 value_head_filters = 32
-value_head_dense = 128
+value_head_dense = 256
