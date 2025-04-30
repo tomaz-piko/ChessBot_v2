@@ -35,6 +35,11 @@ cpdef play_game(object mctsSearch, object trt_func, object tablebase, unsigned i
 
         move, root, child_visits = mctsSearch.find_best_move(board, root, trt_func, 800, 0.0, False)
 
+        if move == 0: # Resignation move
+            winner = not board.to_play()
+            outcome_str = "White wins by resignation" if winner == True else "Black wins by resignation"
+            break
+
         history, _ = board.history(history_flip)
         images.append(history)
         statistics.append(child_visits)

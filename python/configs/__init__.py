@@ -47,6 +47,7 @@ _floats = [
     "policy_head_loss_weight",
     "value_head_loss_weight",
     "sgd_momentum",
+    "resignation_threshold",
 ]
 
 _bools = [
@@ -58,6 +59,8 @@ _bools = [
     # Model
     "use_bias_on_output",
     "sgd_nesterov",
+    "tablebase_stopage",
+    "tablebase_search"
 ]
 
 def get_config(baseconfig, section: str):
