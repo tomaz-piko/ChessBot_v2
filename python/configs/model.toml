@@ -24,8 +24,16 @@ value_head_filters = 16
 value_head_dense = 128
 
 [lg]
-conv_filters = 128
+conv_filters = 96
 residual_blocks = 8
+policy_head_filters = 73
+policy_head_dense = 1858
+value_head_filters = 16
+value_head_dense = 128
+
+[xl]
+conv_filters = 128
+residual_blocks = 10
 policy_head_filters = 73
 policy_head_dense = 1858
 value_head_filters = 32

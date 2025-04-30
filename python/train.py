@@ -310,6 +310,7 @@ if __name__ == "__main__":
                 raise ValueError(f"Not enough samples loaded. Expected {num_samples} but got {len(samples)}")
             
             create_tf_record(config, samples)
+            samples = None  # Free up memory
 
             print(f"Training model for {epochs} epochs with {num_samples} samples...")
             train_model_process(config, training_info, batch_size, epochs)

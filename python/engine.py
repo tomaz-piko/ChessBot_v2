@@ -208,7 +208,7 @@ class UCIEngine:
             self.send_command(f"bestmove {best_move}")
         # Engine decides how long to search and what to search for
         else:
-            best_move, ponder_move = self.timed_search(10)
+            best_move, ponder_move = self.timed_search(5)
             if ponder_move:
                 self.send_command(f"bestmove {best_move} ponder {ponder_move}")
             else:
@@ -282,7 +282,7 @@ class UCIEngine:
             return
         logging.debug(f"Pondering successful. Pondered for {self.root.N} nodes.")
         self.searching = False
-        best_move, ponder_move = self.timed_search(5)
+        best_move, ponder_move = self.timed_search(2.5)
         if ponder_move:
             self.send_command(f"bestmove {best_move} ponder {ponder_move}")
         else:
