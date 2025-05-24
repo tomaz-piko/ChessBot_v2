@@ -159,6 +159,7 @@ def create_tf_record(config, samples):
 
 def do_sts_test(config, current_epoch, model_version="latest"):
     import os
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Suppress TensorFlow logs
 
     time_limit = config.get('sts_time_limit', 1.0)
     num_agents = config.get('sts_num_actors', 6)
@@ -244,7 +245,6 @@ def train_model(config, training_info, batch_size, epochs):
         epochs=epoch_to,
         steps_per_epoch=1,
         callbacks=callbacks,
-        validation_split=0.1,
         verbose=1,
     )
 

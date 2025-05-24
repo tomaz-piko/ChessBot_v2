@@ -34,9 +34,9 @@ num_vl_searches = 16
 
 [training]
 batch_size = 1024
-# Only 70% of samples are used to prevent overfitting, 10% of those are used for validation
-sampling_ratio = 0.7
-validation_ratio = 0.1
+# Only sampling_ratio% of samples are used to prevent overfitting, validation_ratio% of those are used for validation
+sampling_ratio = 0.55
+validation_ratio = 0.0
 learning_rate = 0.004
 max_epochs_per_cycle = 500
 # 2400
@@ -45,7 +45,7 @@ checkpoint_interval = 5000
 sts_test_interval = 1000
 sts_time_limit = 1.0
 # 6 for sm & 3 for xl
-sts_num_actors = 5
+sts_num_actors = 6
 save_used_samples = true
 
 [selfplay]

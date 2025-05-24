@@ -19,7 +19,7 @@ from model import load_as_trt_model
 logging.basicConfig(
     filename="engine.log",
     encoding="utf-8",
-    level=logging.INFO,  # Default to INFO to suppress debug logs
+    level=logging.DEBUG,  # Default to INFO to suppress debug logs
     format="%(levelname)s %(asctime)s %(message)s",
 )
 
@@ -200,7 +200,7 @@ class UCIEngine:
         elif "movetime" in words:
             time_limit_idx = words.index("movetime") + 1
             time_limit = int(words[time_limit_idx]) / 1000.0  # Convert to seconds
-            best_move = self.timed_search(time_limit)
+            best_move, ponder_move = self.timed_search(time_limit)
             self.send_command(f"bestmove {best_move}")
         # Search until stop command is received
         elif "infinite" in words:
