@@ -14,7 +14,7 @@ from rchess import Board, Move
 from mcts import MCTS, Node
 from configs import engineplayConfig as config
 from model import load_as_trt_model
-from time_control import AdaptiveTimeControl, FixedTimeControl
+from time_control import UniversalTimeControl
 
 # Configure logging (disabled by default)
 logging.basicConfig(
@@ -40,7 +40,7 @@ class UCIEngine:
         self.search_thread = None  # Thread for the search process      
 
         # Set up time control class
-        self.time_control = AdaptiveTimeControl(
+        self.time_control = UniversalTimeControl(
             moves_estimate=config["moves_estimate"],
             move_overhead_ms=config["move_overhead_ms"],
         )
