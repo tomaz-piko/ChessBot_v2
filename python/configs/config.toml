@@ -69,3 +69,7 @@ moves_softmax_temp = 0.0
 resignation_threshold = 0.0
 # Use tablebase during search
 tablebase_search = true
+# Params for time control
+moves_estimate = 100
+move_overhead_ms = 50
+log_level = DEBUG

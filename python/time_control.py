@@ -66,36 +66,33 @@ class FixedTimeControl(TimeControl):
         return f"FixedTimeControl({self.normal_move_time}s, ponder: {self.ponder_hit_time}s)"
 
 
-class AdaptiveTimeControl(TimeControl):
+class UniversalTimeControl(TimeControl):
     """
-    Time control strategy for standard UCI mode with dynamic time allocation.
+    Time control strategy for standard UCI mode with dynamic time allocation usefull for all time modes (bullet, rapid etc.).
     
-    This time control uses information about remaining time, increments, and
-    game state to determine how much time to spend on a move.
+    This time control simply estimates the number of moves in a game and allocates time based on that.
+    It also considers the increment after each move if there is one and accounts for a small overhead for each move.
+    In case of a ponder hit, if the pondered time is shorter than the time it would normally take, it makes up for the difference.
+    If it has already pondered for more than it would normally take for a move, it uses the information gathered during pondering and does not allocate any time for the move.
     """
     
     def __init__(self,
                  moves_estimate: int = 100,
-                 move_overhead_ms: int = 100,
-                 ponder_factor: float = 0.75):
+                 move_overhead_ms: int = 100):
         """
         Initialize with weights for different factors.
         
         Args:
-            move_num_weight: Weight for the move number factor (0.0-1.0)
-            piece_num_weight: Weight for the piece count factor (0.0-1.0)
             moves_estimate: Estimated total number of moves in the game
             move_overhead_ms: Expected overhead in milliseconds when making a move
-            ponder_factor: Factor to reduce time on ponder hits (0.0-1.0)
         """
         self.moves_estimate = max(1, moves_estimate)
         self.move_overhead_ms = max(0, move_overhead_ms)
-        self.ponder_factor = max(0.0, min(1.0, ponder_factor))
     
     def get_move_time(self, 
                       remaining_time_ms: int = 0, 
                       increment_ms: int = 0,
-                      is_ponder_hit: bool = False, 
+                      has_pondered_ms: int = 0, 
                       move_num: int = 1) -> float:
         """
         Calculate time to spend on the current move based on game state.
@@ -113,15 +110,20 @@ class AdaptiveTimeControl(TimeControl):
         remaining_total_time = remaining_time_ms + (increment_ms - self.move_overhead_ms) * remaining_moves
         time_for_move = (remaining_total_time / remaining_moves)
 
-        if is_ponder_hit:
-            time_for_move *= self.ponder_factor
+        # If we already pondered for more than the calculate time,
+        if has_pondered_ms > time_for_move:
+            # If pondered time is greater than calculated move time, use pondered time
+            time_for_move = 0
+        elif has_pondered_ms > 0:
+            # If pondered time is less than calculated move time, use remaining time
+            time_for_move = time_for_move - has_pondered_ms
 
         time_for_move = min(time_for_move, remaining_time_ms)
-        return (time_for_move - self.move_overhead_ms) / 1000.0  # Convert to seconds
+        return (time_for_move - self.move_overhead_ms) / 1000.0 if time_for_move > 0 else 0 # Convert to seconds
         
     
     def __str__(self) -> str:
         """String representation of the UCI time control."""
-        return f"AdaptiveTimeControl(est. moves per game={self.moves_estimate}, overhead={self.move_overhead_ms}ms, ponder={self.ponder_factor})"
+        return f"AdaptiveTimeControl(est. moves per game={self.moves_estimate}, overhead={self.move_overhead_ms}ms)"
 
 

@@ -20,7 +20,7 @@ from time_control import AdaptiveTimeControl, FixedTimeControl
 logging.basicConfig(
     filename="engine.log",
     encoding="utf-8",
-    level=logging.DEBUG,  # Default to INFO to suppress debug logs
+    level=logging.INFO if config["log_level"] == "INFO" else logging.DEBUG,  # Default to INFO to suppress debug logs
     format="%(levelname)s %(asctime)s %(message)s",
 )
 
@@ -41,9 +41,8 @@ class UCIEngine:
 
         # Set up time control class
         self.time_control = AdaptiveTimeControl(
-            moves_estimate=100,
-            move_overhead_ms=100,
-            ponder_factor=0.75
+            moves_estimate=config["moves_estimate"],
+            move_overhead_ms=config["move_overhead_ms"],
         )
 
         # Load the TensorRT model
@@ -92,9 +91,8 @@ class UCIEngine:
             self.stop_event.set()  # Ensure any ongoing search is stopped
 
     def handle_uci(self, words):
-        logging.debug("Processing 'uci' command.")
-        self.send_command("id name chessbot")
-        self.send_command("id author YourName")
+        self.send_command("id name PikoZero")
+        self.send_command("id author TomazPiko")
         for option_name, option_data in self.options.items():
             option_type = option_data["type"]
             default_value = option_data["default"]
@@ -105,7 +103,6 @@ class UCIEngine:
         """
         Handle the 'setoption' command to update engine options.
         """
-        logging.debug("Processing 'setoption' command.")
         if "name" in words and "value" in words:
             try:
                 # Extract the option name and value
@@ -132,19 +129,15 @@ class UCIEngine:
             logging.warning(f"Malformed 'setoption' command: {words}")
 
     def handle_isready(self, words):
-        logging.debug("Processing 'isready' command.")
         self.send_command("readyok")
 
     def handle_ucinewgame(self, words):
-        logging.debug("Processing 'ucinewgame' command.")
         del self.board, self.root
         self.board = Board()  # Reset to the starting position
         self.root = Node(0.0)  # Reset the root node
+        logging.debug("State restored due to 'ucinewgame' command.")
 
     def handle_position(self, words):
-        logging.debug("Processing 'position' command.")
-        del self.root, self.board
-
         self.root = Node(0.0)  # Reset the root node
         if "startpos" in words:
             self.board = Board()  # Reset to the starting position
@@ -152,6 +145,7 @@ class UCIEngine:
         elif "fen" in words:
             fen_index = words.index("fen") + 1
             fen = " ".join(words[fen_index:fen_index + 6])  # FEN strings are 6 parts
+            self.board = Board(fen)
             moves_index = fen_index + 6
         else:
             logging.warning("Malformed 'position' command.")
@@ -166,7 +160,6 @@ class UCIEngine:
 
 
     def handle_go(self, words):
-        logging.info("Processing 'go' command.")
         to_play = self.board.to_play()
         w_time, b_time, w_inc, b_inc = 0, 0, 0, 0
         # ---- Search parameters ----
@@ -193,7 +186,9 @@ class UCIEngine:
         # ---- Search conditions ----
         # Start searching in last move in startpos
         if "ponder" in words:
-            self.ponder()
+            remaining_time_ms = w_time if to_play == 1 else b_time
+            increment_ms = w_inc if to_play == 1 else b_inc
+            self.ponder(remaining_time_ms=remaining_time_ms, increment_ms=increment_ms)
         # Search until given depth
         elif "depth" in words:
             pass
@@ -217,16 +212,22 @@ class UCIEngine:
             self.send_command(f"bestmove {best_move}")
         # Engine decides how long to search and what to search for
         else:
+            remaining_time_ms = w_time if to_play == 1 else b_time
+            increment_ms = w_inc if to_play == 1 else b_inc
             time_limit = self.time_control.get_move_time(
-                is_ponder_hit=False,
-                remaining_time_ms=w_time if to_play == 0 else b_time,
-                increment_ms=w_inc if to_play == 0 else b_inc,
+                remaining_time_ms=remaining_time_ms,
+                increment_ms=increment_ms,
+                has_pondered_ms=0,  # No ponder time yet
                 move_num=self.board.ply(),
             )
+            fen = self.board.fen()
+            logging.debug(f"(Timed search) Pos: {fen}, Time remaining: {remaining_time_ms / 1000}, Increment: {increment_ms / 1000}, Time for move: {time_limit:.2f} seconds")
             best_move, ponder_move = self.timed_search(time_limit)
             if ponder_move:
+                logging.debug(f"(Timed search result) Pos: {fen}, Best move: {best_move}, Ponder move: {ponder_move}")
                 self.send_command(f"bestmove {best_move} ponder {ponder_move}")
             else:
+                logging.debug(f"(Timed search result) Pos: {fen}, Best move: {best_move}")
                 self.send_command(f"bestmove {best_move}")
         
     def timed_search(self, time_limit):
@@ -279,10 +280,12 @@ class UCIEngine:
         return move_uci
 
     def ponder(self, remaining_time_ms=0, increment_ms=0):
-        logging.debug("Pondering...")
         self.searching = True
         self.stop_event.clear()
         self.ponderhit_event.clear()
+        fen = self.board.fen()
+        logging.debug(f"(Pondering) Pos: {fen}")
+        time_start = time.time()
         if not self.root.children:
             self.mcts.expand_root(self.board, self.root, self.trt_func, False)
         while True:
@@ -290,48 +293,52 @@ class UCIEngine:
                 break
             self.root = self.mcts.search(self.board, self.root, self.trt_func, False)
         if not self.ponderhit_event.is_set():
-            logging.debug("Pondering failed. Stopping search.")
+            logging.debug("(Pondering) Pondering failed or stopped before completion.")
             self.searching = False
             self.send_command(f"bestmove none") # dummy move to inform the GUI that pondering failed
             self.ponderhit_event.clear()
             return
-        logging.debug(f"Pondering successful. Pondered for {self.root.N} nodes.")
+        time_end = time.time()
+        ponder_time_s = time_end - time_start  # Convert to milliseconds
+        logging.debug(f"(Pondering). Successfuly pondered for {ponder_time_s:.2f} seconds | {self.root.N} nodes.")
         self.searching = False
+
         time_limit = self.time_control.get_move_time(
-            is_ponder_hit=True,
             remaining_time_ms=remaining_time_ms,
             increment_ms=increment_ms,
+            has_pondered_ms=int((time_end - time_start) * 1000),  # Convert to milliseconds
             move_num=self.board.ply(),
         )
+        logging.debug(f"(Timed search) Pos: {fen}, Time remaining: {remaining_time_ms / 1000}s, Increment: {increment_ms / 1000}s, Pondered: {ponder_time_s}s, Time for move: {time_limit:.2f} seconds")
         best_move, ponder_move = self.timed_search(time_limit)
         if ponder_move:
+            logging.debug(f"(Timed search result) Pos: {fen}, Best move: {best_move}, Ponder move: {ponder_move}")
             self.send_command(f"bestmove {best_move} ponder {ponder_move}")
         else:
+            logging.debug(f"(Timed search result) Pos: {fen}, Best move: {best_move}")
             self.send_command(f"bestmove {best_move}")
         return
 
     def handle_ponderhit(self, words):
-        logging.debug("Processing 'ponderhit' command.")
         if self.searching:
             self.ponderhit_event.set()
             self.stop_event.set()
         else:
-            logging.debug("No ongoing search to ponderhit.")
+            logging.warning("No ongoing search to ponderhit.")
 
     def handle_stop(self, words):
-        logging.debug("Processing 'stop' command.")
         if self.searching:
             self.ponderhit_event.clear()
             self.stop_event.set()
         else:
-            logging.debug("No ongoing search to stop.")
+            logging.warning("No ongoing search to stop.")
 
     def handle_quit(self, words):
-        logging.debug("Processing 'quit' command. Exiting...")
         self.should_exit = True
         self.stop_event.set()  # Ensure any ongoing search is stopped
         if self.search_thread:
             self.search_thread.join()
+        logging.info("Exiting due to 'quit' command.")
 
     def handle_debug(self, words):
         """
@@ -353,7 +360,6 @@ class UCIEngine:
         """
         Send a command to the engine.
         """
-        logging.debug(f"Sending command: {command}")
         sys.stdout.write(command + "\n")
         sys.stdout.flush()
 
@@ -363,7 +369,6 @@ def producer(q, engine):
     Produce commands to be processed.
     """
     logging.info("Producer started.")
-
     def read_input(stdin, mask):
         line = stdin.readline()
         if not line:
@@ -401,14 +406,10 @@ def consumer(q, engine):
 
 
 if __name__ == "__main__":
-    logging.info("Engine started.")
     engine = UCIEngine()
     q = queue.Queue()
     n_consumers = 2
 
     with ThreadPoolExecutor(max_workers=n_consumers + 1) as executor:
-        logging.info("Starting producer and consumer threads.")
         executor.submit(producer, q, engine)
         [executor.submit(consumer, q, engine) for _ in range(n_consumers)]
-
-    logging.info("Engine shutting down.")
