@@ -14,6 +14,7 @@ from rchess import Board, Move
 from mcts import MCTS, Node
 from configs import engineplayConfig as config
 from model import load_as_trt_model
+from time_control import AdaptiveTimeControl, FixedTimeControl
 
 # Configure logging (disabled by default)
 logging.basicConfig(
@@ -36,7 +37,14 @@ class UCIEngine:
         self.searching = False
         self.stop_event = threading.Event()  # Thread-safe stop signal
         self.ponderhit_event = threading.Event()
-        self.search_thread = None  # Thread for the search process        
+        self.search_thread = None  # Thread for the search process      
+
+        # Set up time control class
+        self.time_control = AdaptiveTimeControl(
+            moves_estimate=100,
+            move_overhead_ms=100,
+            ponder_factor=0.75
+        )
 
         # Load the TensorRT model
         self.trt_func, self._ = load_as_trt_model(model_version="latest")
@@ -159,7 +167,8 @@ class UCIEngine:
 
     def handle_go(self, words):
         logging.info("Processing 'go' command.")
-
+        to_play = self.board.to_play()
+        w_time, b_time, w_inc, b_inc = 0, 0, 0, 0
         # ---- Search parameters ----
         # Restrict search to the specified moves
         # searchmoves <move1> <move2> ... 
@@ -167,16 +176,16 @@ class UCIEngine:
             pass
         # Whites time left on clock
         if "wtime" in words:
-            pass
+            w_time = int(words[words.index("wtime") + 1])
         # Blacks time left on clock
         if "btime" in words:
-            pass
+            b_time = int(words[words.index("btime") + 1])
         # White increment per move in ms if x > 0
         if "winc" in words:
-            pass
+            w_inc = int(words[words.index("winc") + 1])
         # Black increment per move in ms if x > 0
         if "binc" in words:
-            pass
+            b_inc = int(words[words.index("binc") + 1])
         # Moves left to next time control
         if "movestogo" in words:
             pass
@@ -208,7 +217,13 @@ class UCIEngine:
             self.send_command(f"bestmove {best_move}")
         # Engine decides how long to search and what to search for
         else:
-            best_move, ponder_move = self.timed_search(5)
+            time_limit = self.time_control.get_move_time(
+                is_ponder_hit=False,
+                remaining_time_ms=w_time if to_play == 0 else b_time,
+                increment_ms=w_inc if to_play == 0 else b_inc,
+                move_num=self.board.ply(),
+            )
+            best_move, ponder_move = self.timed_search(time_limit)
             if ponder_move:
                 self.send_command(f"bestmove {best_move} ponder {ponder_move}")
             else:
@@ -263,7 +278,7 @@ class UCIEngine:
         self.searching = False
         return move_uci
 
-    def ponder(self):
+    def ponder(self, remaining_time_ms=0, increment_ms=0):
         logging.debug("Pondering...")
         self.searching = True
         self.stop_event.clear()
@@ -282,7 +297,13 @@ class UCIEngine:
             return
         logging.debug(f"Pondering successful. Pondered for {self.root.N} nodes.")
         self.searching = False
-        best_move, ponder_move = self.timed_search(2.5)
+        time_limit = self.time_control.get_move_time(
+            is_ponder_hit=True,
+            remaining_time_ms=remaining_time_ms,
+            increment_ms=increment_ms,
+            move_num=self.board.ply(),
+        )
+        best_move, ponder_move = self.timed_search(time_limit)
         if ponder_move:
             self.send_command(f"bestmove {best_move} ponder {ponder_move}")
         else:
