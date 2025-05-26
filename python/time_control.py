@@ -106,9 +106,15 @@ class UniversalTimeControl(TimeControl):
         Returns:
             Time in seconds to spend on the current move
         """
-        remaining_moves = self.moves_estimate - move_num
+        def moves_left(move_num):
+            a = 0.004
+            b = -0.245
+            h = 100
+            k = 10
+            return a * (move_num - h)**2 + b * (move_num - h) + k
+        remaining_moves = moves_left(move_num)
         remaining_total_time = remaining_time_ms + (increment_ms - self.move_overhead_ms) * remaining_moves
-        time_for_move = (remaining_total_time / remaining_moves)
+        time_for_move = (remaining_total_time / (remaining_moves + 1))
 
         # If we already pondered for more than the calculate time,
         if has_pondered_ms > time_for_move:
