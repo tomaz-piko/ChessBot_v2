@@ -323,29 +323,21 @@ class UCIEngine:
         sys.stdout.flush()
 
 
-def producer(q, engine):
+def producer(q):
     """
     Produce commands to be processed.
     """
     logging.info("Producer started.")
-    def read_input(stdin, mask):
-        line = stdin.readline()
+    while True:
+        line = sys.stdin.readline()
         if not line:
-            return None
-        else:
-            return line.strip()
-
-    sel = selectors.DefaultSelector()
-    sel.register(sys.stdin, selectors.EVENT_READ, read_input)
-
-    while not engine.should_exit.is_set():
-        events = sel.select(timeout=1)
-        for key, _ in events:
-            callback = key.data
-            line = callback(sys.stdin, _)
-            if line:
-                logging.debug(f"Producer read line: {line}")
-                q.put(line)
+            break  # EOF or input closed
+        line = line.strip()
+        if line:
+            logging.debug(f"Producer read line: {line}")
+            q.put(line)
+            if line == "quit":
+                break
     logging.info("Producer exiting.")
 
 
@@ -371,5 +363,5 @@ if __name__ == "__main__":
     n_consumers = 2
 
     with ThreadPoolExecutor(max_workers=n_consumers + 1) as executor:
-        executor.submit(producer, q, engine)
+        executor.submit(producer, q)
         [executor.submit(consumer, q, engine) for _ in range(n_consumers)]
