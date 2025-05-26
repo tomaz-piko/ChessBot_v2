@@ -33,10 +33,12 @@ class UCIEngine:
             "SyzygyPath": {"type": "string", "default": "../syzygy"},  # Default path for Syzygy tablebases
             "UCI_ShowWDL": {"type": "check", "default": False},  # Show Win-Draw-Loss statistics
         }
-        self.should_exit = threading.Event()  # Thread-safe exit signal
-        self.stop_event = threading.Event()  # Thread-safe stop signal
-        self.ponderhit_event = threading.Event()
+        self.should_exit = threading.Event()  # Thread-safe signal that tells the engine to shutdown
 
+        self.stop_event = threading.Event()  # Thread-safe signal that tells the engine to stop current search
+        self.ponderhit_event = threading.Event() # Thread-safe signal that tells the engine that ponder hit has been received
+
+        
         # Set up time control class
         self.time_control = UniversalTimeControl(
             move_overhead_ms=config["move_overhead_ms"],
@@ -84,7 +86,7 @@ class UCIEngine:
             handler(words)
         except Exception as e:
             logging.warning(f"Error occured handling: {command_type}, {words} - {e}")
-            self.stop_event.set()  # Ensure any ongoing search is stopped
+            self.stop_event.set() 
             self.should_exit.set()
 
     def handle_uci(self, words):
@@ -157,6 +159,8 @@ class UCIEngine:
 
 
     def handle_go(self, words):
+        self.stop_event.clear()  # Reset the stop event
+        self.ponderhit_event.clear()  # Reset the ponder hit event
         to_play = self.board.to_play()
         w_time, b_time, w_inc, b_inc = 0, 0, 0, 0
         # ---- Search parameters ----
@@ -191,9 +195,7 @@ class UCIEngine:
             pass
         # Search unitl gives number of nodes reached
         elif "nodes" in words:
-            num_nodes_idx = words.index("nodes") + 1
-            best_move = self.nodes_search(int(words[num_nodes_idx]))
-            self.send_command(f"bestmove {best_move}")
+            pass
         # Search for mate in x moves
         elif "mate" in words:
             pass
@@ -205,8 +207,7 @@ class UCIEngine:
             self.send_command(f"bestmove {best_move}")
         # Search until stop command is received
         elif "infinite" in words:
-            best_move = self.inifinite_search()
-            self.send_command(f"bestmove {best_move}")
+            pass
         # Engine decides how long to search and what to search for
         else:
             remaining_time_ms = w_time if to_play == 1 else b_time
@@ -228,14 +229,13 @@ class UCIEngine:
                 self.send_command(f"bestmove {best_move}")
         
     def timed_search(self, time_limit):
-        self.stop_event.clear()
         start_time = time.time()
         if not self.root.children:
             self.mcts.expand_root(self.board, self.root, self.trt_func, False)
         while True:
-            if self.stop_event.is_set():
-                break
             if time.time() - start_time >= time_limit:
+                break
+            if self.stop_event.is_set():
                 break
             self.root = self.mcts.search(self.board, self.root, self.trt_func, False)
         move_num = self.mcts.select_best_move(self.root, 0.0)
@@ -245,17 +245,10 @@ class UCIEngine:
         ponder_move_num = self.mcts.select_best_move(self.root[move_num], 0.0)
         ponder_move_uci = Move(ponder_move_num).uci()
         return move_uci, ponder_move_uci
-    
-    def nodes_search(self, nodes):
-        pass
-    
-    def inifinite_search(self):
-        pass
 
     def ponder(self, remaining_time_ms=0, increment_ms=0):
-        self.stop_event.clear()
-        self.ponderhit_event.clear()
         fen = self.board.fen()
+        ponder_success = False
         logging.debug(f"(Pondering) Pos: {fen}")
         time_start = time.time()
         if not self.root.children:
@@ -263,13 +256,15 @@ class UCIEngine:
         while True:
             if self.stop_event.is_set():
                 break
+            if self.ponderhit_event.is_set():
+                ponder_success = True
+                break
             self.root = self.mcts.search(self.board, self.root, self.trt_func, False)
-        if not self.ponderhit_event.is_set():
+        time_end = time.time()
+        if not ponder_success:
             logging.debug("(Pondering) Pondering failed or stopped before completion.")
             self.send_command(f"bestmove none") # dummy move to inform the GUI that pondering failed
-            self.ponderhit_event.clear()
             return
-        time_end = time.time()
         ponder_time_s = time_end - time_start  # Convert to milliseconds
         logging.debug(f"(Pondering). Successfuly pondered for {ponder_time_s:.2f} seconds | {self.root.N} nodes.")
 
@@ -293,14 +288,8 @@ class UCIEngine:
         if self.ponderhit_event.is_set():
             logging.warning("Ponder hit already set elsewhere. Potential risk.")
         self.ponderhit_event.set()
-        if self.stop_event.is_set():
-            logging.debug("Stop event already set elsewhere. Potential risk.")
-        self.stop_event.set()
 
     def handle_stop(self, words):
-        if not self.ponderhit_event.is_set():
-            logging.debug("Stop command received without an active ponder.")
-        self.ponderhit_event.clear()
         if self.stop_event.is_set():
             logging.debug("Stop event already set elsewhere. Potential risk.")
         self.stop_event.set()
