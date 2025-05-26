@@ -157,7 +157,7 @@ def create_tf_record(config, samples):
             writer.write(example.SerializeToString())
 
 
-def do_sts_test(config, current_epoch, model_version="latest"):
+def do_sts_test(config, num_sts_tests, model_version="latest"):
     import os
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Suppress TensorFlow logs
 
@@ -166,7 +166,7 @@ def do_sts_test(config, current_epoch, model_version="latest"):
     sts_rating = do_strength_test(time_limit=time_limit, num_agents=num_agents, model_version=model_version)
     sts_summary_writter = tf.summary.create_file_writer(os.path.join(config['project_dir'], 'data', 'logs', 'sts'))
     with sts_summary_writter.as_default():
-        tf.summary.scalar("ELO Rating", sts_rating, step=current_epoch // config['sts_test_interval'])
+        tf.summary.scalar("ELO Rating", sts_rating, step=num_sts_tests + 1)
 
 
 def update_trt_model_process(config, model_version="latest", precision_mode="FP16", build_model=True):
@@ -275,6 +275,7 @@ if __name__ == "__main__":
     config = trainingConfig
     training_info = load_training_info(trainingConfig)
 
+    num_sts_tests = training_info.get('num_sts_tests', 0)
     curr_epoch = training_info['current_epoch']
     batch_size = config['batch_size']
 
@@ -341,10 +342,12 @@ if __name__ == "__main__":
                 # Run STS testing
                 model_version = "tmp" if next_checkpoint_at != next_sts_test_at else "latest"
                 print(f"Running STS testing with '{model_version}'...")
-                do_sts_test(config, current_epoch=curr_epoch, model_version=model_version)
+                do_sts_test(config, num_sts_tests=num_sts_tests, model_version=model_version)
+                num_sts_tests += 1
 
             training_info['current_epoch'] = curr_epoch
             training_info['total_samples'] = training_info.get('total_samples', 0) + num_samples
+            training_info['num_sts_tests'] = num_sts_tests
             save_training_info(config, training_info)
         except Exception as e:
             print(f"Error: {e}")
