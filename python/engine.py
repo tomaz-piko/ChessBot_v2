@@ -34,7 +34,6 @@ class UCIEngine:
             "UCI_ShowWDL": {"type": "check", "default": False},  # Show Win-Draw-Loss statistics
         }
         self.should_exit = False
-        self.searching = False
         self.stop_event = threading.Event()  # Thread-safe stop signal
         self.ponderhit_event = threading.Event()
 
@@ -229,7 +228,6 @@ class UCIEngine:
                 self.send_command(f"bestmove {best_move}")
         
     def timed_search(self, time_limit):
-        self.searching = True
         self.stop_event.clear()
         start_time = time.time()
         if not self.root.children:
@@ -240,7 +238,6 @@ class UCIEngine:
             if time.time() - start_time >= time_limit:
                 break
             self.root = self.mcts.search(self.board, self.root, self.trt_func, False)
-        self.searching = False
         move_num = self.mcts.select_best_move(self.root, 0.0)
         move_uci = Move(move_num).uci()
         if not self.root.children[move_num].children:
@@ -250,35 +247,12 @@ class UCIEngine:
         return move_uci, ponder_move_uci
     
     def nodes_search(self, nodes):
-        self.searching = True
-        self.stop_event.clear()
-        if not self.root.children:
-            self.mcts.expand_root(self.board, self.root, self.trt_func, False)
-        while 1:
-            if self.stop_event.is_set() or self.root.N >= nodes:
-                break
-            self.root = self.mcts.search(self.board, self.root, self.trt_func, False)
-        move_num = self.mcts.select_best_move(self.root, 0.0)
-        move_uci = Move(move_num).uci()
-        self.searching = False
-        return move_uci
+        pass
     
     def inifinite_search(self):
-        self.searching = True
-        self.stop_event.clear()
-        if not self.root.children:
-            self.mcts.expand_root(self.board, self.root, self.trt_func, False)
-        while 1:
-            if self.stop_event.is_set():
-                break
-            self.root = self.mcts.search(self.board, self.root, self.trt_func, False)
-        move_num = self.mcts.select_best_move(self.root, 0.0)
-        move_uci = Move(move_num).uci()
-        self.searching = False
-        return move_uci
+        pass
 
     def ponder(self, remaining_time_ms=0, increment_ms=0):
-        self.searching = True
         self.stop_event.clear()
         self.ponderhit_event.clear()
         fen = self.board.fen()
@@ -292,14 +266,12 @@ class UCIEngine:
             self.root = self.mcts.search(self.board, self.root, self.trt_func, False)
         if not self.ponderhit_event.is_set():
             logging.debug("(Pondering) Pondering failed or stopped before completion.")
-            self.searching = False
             self.send_command(f"bestmove none") # dummy move to inform the GUI that pondering failed
             self.ponderhit_event.clear()
             return
         time_end = time.time()
         ponder_time_s = time_end - time_start  # Convert to milliseconds
         logging.debug(f"(Pondering). Successfuly pondered for {ponder_time_s:.2f} seconds | {self.root.N} nodes.")
-        self.searching = False
 
         time_limit = self.time_control.get_move_time(
             remaining_time_ms=remaining_time_ms,
@@ -318,18 +290,20 @@ class UCIEngine:
         return
 
     def handle_ponderhit(self, words):
-        if self.searching:
-            self.ponderhit_event.set()
-            self.stop_event.set()
-        else:
-            logging.warning("No ongoing search to ponderhit.")
+        if self.ponderhit_event.is_set():
+            logging.warning("Ponder hit already set elsewhere. Potential risk.")
+        self.ponderhit_event.set()
+        if self.stop_event.is_set():
+            logging.debug("Stop event already set elsewhere. Potential risk.")
+        self.stop_event.set()
 
     def handle_stop(self, words):
-        if self.searching:
-            self.ponderhit_event.clear()
-            self.stop_event.set()
-        else:
-            logging.warning("No ongoing search to stop.")
+        if not self.ponderhit_event.is_set():
+            logging.debug("Stop command received without an active ponder.")
+        self.ponderhit_event.clear()
+        if self.stop_event.is_set():
+            logging.debug("Stop event already set elsewhere. Potential risk.")
+        self.stop_event.set()
 
     def handle_quit(self, words):
         self.should_exit = True
