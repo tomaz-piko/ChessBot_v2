@@ -16,7 +16,6 @@ _ints = [
     "checkpoint_interval",
     "sts_test_interval",
     "sts_num_actors",
-    "moves_estimate",
     "move_overhead_ms",
 
     # Model

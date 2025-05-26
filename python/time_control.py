@@ -77,7 +77,6 @@ class UniversalTimeControl(TimeControl):
     """
     
     def __init__(self,
-                 moves_estimate: int = 100,
                  move_overhead_ms: int = 100):
         """
         Initialize with weights for different factors.
@@ -86,7 +85,6 @@ class UniversalTimeControl(TimeControl):
             moves_estimate: Estimated total number of moves in the game
             move_overhead_ms: Expected overhead in milliseconds when making a move
         """
-        self.moves_estimate = max(1, moves_estimate)
         self.move_overhead_ms = max(0, move_overhead_ms)
     
     def get_move_time(self, 

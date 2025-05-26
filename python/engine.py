@@ -20,7 +20,7 @@ from time_control import UniversalTimeControl
 logging.basicConfig(
     filename="engine.log",
     encoding="utf-8",
-    level=logging.INFO if config["log_level"] == "INFO" else logging.DEBUG,  # Default to INFO to suppress debug logs
+    level=logging.DEBUG,  # Default to INFO to suppress debug logs
     format="%(levelname)s %(asctime)s %(message)s",
 )
 
@@ -41,7 +41,6 @@ class UCIEngine:
 
         # Set up time control class
         self.time_control = UniversalTimeControl(
-            moves_estimate=config["moves_estimate"],
             move_overhead_ms=config["move_overhead_ms"],
         )
 
