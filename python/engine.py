@@ -4,7 +4,6 @@ import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Suppress TensorFlow logs
            
 import logging
-import selectors
 import sys
 import queue
 import time
@@ -331,7 +330,7 @@ def producer(q):
     while True:
         line = sys.stdin.readline()
         if not line:
-            break  # EOF or input closed
+            line = "quit"  # If EOF is reached, send quit command
         line = line.strip()
         if line:
             logging.debug(f"Producer read line: {line}")
