@@ -33,7 +33,7 @@ class UCIEngine:
             "SyzygyPath": {"type": "string", "default": "../syzygy"},  # Default path for Syzygy tablebases
             "UCI_ShowWDL": {"type": "check", "default": False},  # Show Win-Draw-Loss statistics
         }
-        self.should_exit = False
+        self.should_exit = threading.Event()  # Thread-safe exit signal
         self.stop_event = threading.Event()  # Thread-safe stop signal
         self.ponderhit_event = threading.Event()
 
@@ -84,8 +84,8 @@ class UCIEngine:
             handler(words)
         except Exception as e:
             logging.warning(f"Error occured handling: {command_type}, {words} - {e}")
-            self.should_exit = True
             self.stop_event.set()  # Ensure any ongoing search is stopped
+            self.should_exit.set()
 
     def handle_uci(self, words):
         self.send_command("id name PikoZero")
@@ -306,8 +306,8 @@ class UCIEngine:
         self.stop_event.set()
 
     def handle_quit(self, words):
-        self.should_exit = True
         self.stop_event.set()  # Ensure any ongoing search is stopped
+        self.should_exit.set()
         logging.info("Exiting due to 'quit' command.")
 
     def handle_debug(self, words):
@@ -349,12 +349,13 @@ def producer(q, engine):
     sel = selectors.DefaultSelector()
     sel.register(sys.stdin, selectors.EVENT_READ, read_input)
 
-    while not engine.should_exit:
+    while not engine.should_exit.is_set():
         events = sel.select(timeout=1)
         for key, _ in events:
             callback = key.data
             line = callback(sys.stdin, _)
             if line:
+                logging.debug(f"Producer read line: {line}")
                 q.put(line)
     logging.info("Producer exiting.")
 
@@ -364,7 +365,7 @@ def consumer(q, engine):
     Consume commands from the queue and process them.
     """
     logging.info("Consumer started.")
-    while not engine.should_exit:
+    while not engine.should_exit.is_set():
         try:
             line = q.get(timeout=1)
             if line:
