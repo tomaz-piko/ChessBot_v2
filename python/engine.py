@@ -37,7 +37,6 @@ class UCIEngine:
         self.searching = False
         self.stop_event = threading.Event()  # Thread-safe stop signal
         self.ponderhit_event = threading.Event()
-        self.search_thread = None  # Thread for the search process      
 
         # Set up time control class
         self.time_control = UniversalTimeControl(
@@ -335,8 +334,6 @@ class UCIEngine:
     def handle_quit(self, words):
         self.should_exit = True
         self.stop_event.set()  # Ensure any ongoing search is stopped
-        if self.search_thread:
-            self.search_thread.join()
         logging.info("Exiting due to 'quit' command.")
 
     def handle_debug(self, words):
