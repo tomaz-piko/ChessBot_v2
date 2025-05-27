@@ -136,7 +136,7 @@ class UCIEngine:
         logging.debug("State restored due to 'ucinewgame' command.")
 
     def handle_position(self, words):
-        self.root = Node(0.0)  # Reset the root node
+        #self.root = Node(0.0)  # Reset the root node
         if "startpos" in words:
             self.board = Board()  # Reset to the starting position
             moves_index = words.index("startpos") + 1
@@ -154,6 +154,7 @@ class UCIEngine:
             moves_index = words.index("moves") + 1
             for move in words[moves_index:]:
                 self.board.push_uci(move)
+
         logging.debug(f"Board position set to: {self.board.fen()}")
 
 
@@ -161,6 +162,7 @@ class UCIEngine:
         self.stop_event.clear()  # Reset the stop event
         self.ponderhit_event.clear()  # Reset the ponder hit event
         to_play = self.board.to_play()
+        last_move = self.board.moves_history(1)[0]
         w_time, b_time, w_inc, b_inc = 0, 0, 0, 0
         # ---- Search parameters ----
         # Restrict search to the specified moves
@@ -188,7 +190,7 @@ class UCIEngine:
         if "ponder" in words:
             remaining_time_ms = w_time if to_play == 1 else b_time
             increment_ms = w_inc if to_play == 1 else b_inc
-            self.ponder(remaining_time_ms=remaining_time_ms, increment_ms=increment_ms)
+            self.ponder(last_move, remaining_time_ms=remaining_time_ms, increment_ms=increment_ms)
         # Search until given depth
         elif "depth" in words:
             pass
@@ -209,13 +211,16 @@ class UCIEngine:
             pass
         # Engine decides how long to search and what to search for
         else:
+            self.root = self.root.children.get(last_move, Node(0.0))  # Get the root node for the current position
+            logging.debug(f"(Tree reuse) Attempting to reuse tree. Nodes: {self.root.N}.")
+
             remaining_time_ms = w_time if to_play == 1 else b_time
             increment_ms = w_inc if to_play == 1 else b_inc
             time_limit = self.time_control.get_move_time(
                 remaining_time_ms=remaining_time_ms,
                 increment_ms=increment_ms,
                 has_pondered_ms=0,  # No ponder time yet
-                move_num=self.board.ply(),
+                move_num=self.board.ply() // 2 + 1,
             )
             fen = self.board.fen()
             logging.debug(f"(Timed search) Pos: {fen}, Time remaining: {remaining_time_ms / 1000}, Increment: {increment_ms / 1000}, Time for move: {time_limit:.2f} seconds")
@@ -239,39 +244,46 @@ class UCIEngine:
             self.root = self.mcts.search(self.board, self.root, self.trt_func, False)
         move_num = self.mcts.select_best_move(self.root, 0.0)
         move_uci = Move(move_num).uci()
+
         if not self.root.children[move_num].children:
+            self.root = self.root.children[move_num]  # Update root to the best move found
+            logging.debug(f"(Tree reuse) Attempting to reuse tree. Nodes: {self.root.N}.")
             return move_uci, None
         ponder_move_num = self.mcts.select_best_move(self.root[move_num], 0.0)
         ponder_move_uci = Move(ponder_move_num).uci()
+        self.root = self.root.children[move_num]  # Update root to the best move found
+        logging.debug(f"(Tree reuse) Attempting to reuse tree. Nodes: {self.root.N}.")
         return move_uci, ponder_move_uci
 
-    def ponder(self, remaining_time_ms=0, increment_ms=0):
+    def ponder(self, last_move, remaining_time_ms=0, increment_ms=0):
+        ponder_root = self.root.children.get(last_move, Node(0.0))  # Get the root node for pondering
         fen = self.board.fen()
         ponder_success = False
         logging.debug(f"(Pondering) Pos: {fen}")
         time_start = time.time()
-        if not self.root.children:
-            self.mcts.expand_root(self.board, self.root, self.trt_func, False)
+        if not ponder_root.children:
+            self.mcts.expand_root(self.board, ponder_root, self.trt_func, False)
         while True:
             if self.stop_event.is_set():
                 break
             if self.ponderhit_event.is_set():
                 ponder_success = True
                 break
-            self.root = self.mcts.search(self.board, self.root, self.trt_func, False)
+            ponder_root = self.mcts.search(self.board, ponder_root, self.trt_func, False)
         time_end = time.time()
         if not ponder_success:
             logging.debug("(Pondering) Pondering failed or stopped before completion.")
             self.send_command(f"bestmove none") # dummy move to inform the GUI that pondering failed
             return
         ponder_time_s = time_end - time_start  # Convert to milliseconds
-        logging.debug(f"(Pondering). Successfuly pondered for {ponder_time_s:.2f} seconds | {self.root.N} nodes.")
-
+        logging.debug(f"(Pondering). Successfuly pondered for {ponder_time_s:.2f} seconds | {ponder_root.N} nodes.")
+        self.root = self.root.children[last_move]  # Update root to the pondered move
+        logging.debug(f"(Tree reuse) Attempting to reuse tree. Nodes: {self.root.N}.")
         time_limit = self.time_control.get_move_time(
             remaining_time_ms=remaining_time_ms,
             increment_ms=increment_ms,
             has_pondered_ms=int((time_end - time_start) * 1000),  # Convert to milliseconds
-            move_num=self.board.ply(),
+            move_num=self.board.ply() // 2 + 1,
         )
         logging.debug(f"(Timed search) Pos: {fen}, Time remaining: {remaining_time_ms / 1000}s, Increment: {increment_ms / 1000}s, Pondered: {ponder_time_s}s, Time for move: {time_limit:.2f} seconds")
         best_move, ponder_move = self.timed_search(time_limit)
