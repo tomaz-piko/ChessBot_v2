@@ -49,6 +49,12 @@ def predict_fn(trt_func, images):
     value = predictions["value_head"]
     return value, policy_logits
 
+@tf.function
+def predict_model(model, images):
+    #image = tf.expand_dims(image, axis=0)
+    values, policy_logits = model(images)
+    return values, policy_logits
+
 def reshape_planes(planes):
     x = planes[:, :-1]
     shape = x.get_shape()

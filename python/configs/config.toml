@@ -37,10 +37,10 @@ batch_size = 1024
 # Only sampling_ratio% of samples are used to prevent overfitting, validation_ratio% of those are used for validation
 sampling_ratio = 0.55
 validation_ratio = 0.0
-learning_rate = 0.004
+learning_rate = 0.0004
 max_epochs_per_cycle = 500
 # 2400
-checkpoint_interval = 2000
+checkpoint_interval = 5000
 # 480
 sts_test_interval = 1000
 sts_time_limit = 1.0
@@ -53,7 +53,7 @@ buffer_size = 10000
 root_exploration_noise = true
 num_mcts_sims = 800
 num_mcts_sampling_moves = 30
-moves_softmax_temp = 1.35
+moves_softmax_temp = 1.2
 # Terminate selfplay games and evaluate it based on tablebase
 tablebase_stopage = true
 # Resignation during selfplay if Q-value of the best move is below this threshold (0.0 to disable)
@@ -68,6 +68,6 @@ moves_softmax_temp = 0.0
 # Resignation during selfplay if Q-value of the best move is below this threshold (0.0 to disable)
 resignation_threshold = 0.0
 # Use tablebase during search
-tablebase_search = true
+tablebase_search = false
 # Params for time control
 move_overhead_ms = 50

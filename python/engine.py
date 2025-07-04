@@ -162,7 +162,10 @@ class UCIEngine:
         self.stop_event.clear()  # Reset the stop event
         self.ponderhit_event.clear()  # Reset the ponder hit event
         to_play = self.board.to_play()
-        last_move = self.board.moves_history(1)[0]
+        last_move = None
+        last_moves = self.board.moves_history(1)
+        if len(last_moves) > 0:
+            last_move = last_moves[0]
         w_time, b_time, w_inc, b_inc = 0, 0, 0, 0
         # ---- Search parameters ----
         # Restrict search to the specified moves

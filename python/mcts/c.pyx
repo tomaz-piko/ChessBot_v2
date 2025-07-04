@@ -1,7 +1,7 @@
 #cython: profile=False, language_level=3
 from actionspace import map_w, map_b
 from rchess import Move
-from model import predict_fn
+from model import predict_fn, predict_model
 from chess import Board as TbBoard
 import chess.syzygy as syzygy
 import os
@@ -427,14 +427,23 @@ cdef make_predictions(object trt_func, cnp.ndarray[BATCH_DTYPE_t, ndim=2] batch)
     cdef cnp.ndarray[DTYPE_t, ndim=2] values, policy_logits
     cdef object values_tf, policy_logits_tf
 
-    values_tf, policy_logits_tf = predict_fn(
-        trt_func=trt_func,
-        images=batch
-    )
+    if is_trt_func(trt_func):      
+        values_tf, policy_logits_tf = predict_fn(
+            trt_func=trt_func,
+            images=batch
+        )
 
-    values = np.array(values_tf, dtype=DTYPE)
-    policy_logits = np.array(policy_logits_tf, dtype=DTYPE)
-    return values, policy_logits
+        values = np.array(values_tf, dtype=DTYPE)
+        policy_logits = np.array(policy_logits_tf, dtype=DTYPE)
+        return values, policy_logits
+    else:
+        values_tf, policy_logits_tf = predict_model(
+            model=trt_func,
+            images=batch
+        )
+        values = np.array(values_tf, dtype=DTYPE)
+        policy_logits = np.array(policy_logits_tf, dtype=DTYPE)
+        return values, policy_logits
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -477,6 +486,16 @@ cdef inline float PB_C(unsigned int pN, unsigned int pb_c_base, float pb_c_init,
 cdef inline float value_to_01(float value) noexcept:
     return (value + 1.0) / 2.0
 
+@cython.cdivision(True)
+cdef inline float clip_value(float value, float amount) noexcept:
+    # Clip value so it doesnt come too close to 0 or 1, e.g. [0.05, 0.95]
+    cdef float max_value = 1.0 - amount
+
+    if value > max_value:
+        return max_value
+    else:
+        return value
+
 cdef inline float flip_value(float value) noexcept:
     return 1.0 - value
 
@@ -506,3 +525,8 @@ cdef inline void add_vloss(Node root, list moves_to_leaf):
     for move in moves_to_leaf:
         node = node[move]
         node.apply_vloss()
+
+@cython.nonecheck(False)
+cdef inline bint is_trt_func(obj):
+    # TensorRT function is a _WrapperFunction with a 'structured_input_signature' attribute
+    return hasattr(obj, 'structured_input_signature') and callable(obj)
