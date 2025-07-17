@@ -30,7 +30,7 @@ pb_c_factor = 1.0
 moves_softmax_temp = 0.0
 policy_temp = 1.0
 
-num_vl_searches = 16
+num_vl_searches = 32
 
 [training]
 batch_size = 1024
