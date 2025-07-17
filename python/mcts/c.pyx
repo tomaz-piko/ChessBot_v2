@@ -427,23 +427,15 @@ cdef make_predictions(object trt_func, cnp.ndarray[BATCH_DTYPE_t, ndim=2] batch)
     cdef cnp.ndarray[DTYPE_t, ndim=2] values, policy_logits
     cdef object values_tf, policy_logits_tf
 
-    if is_trt_func(trt_func):      
-        values_tf, policy_logits_tf = predict_fn(
-            trt_func=trt_func,
-            images=batch
-        )
+    values_tf, policy_logits_tf = predict_fn(
+        trt_func=trt_func,
+        images=batch
+    )
 
-        values = np.array(values_tf, dtype=DTYPE)
-        policy_logits = np.array(policy_logits_tf, dtype=DTYPE)
-        return values, policy_logits
-    else:
-        values_tf, policy_logits_tf = predict_model(
-            model=trt_func,
-            images=batch
-        )
-        values = np.array(values_tf, dtype=DTYPE)
-        policy_logits = np.array(policy_logits_tf, dtype=DTYPE)
-        return values, policy_logits
+    values = np.array(values_tf, dtype=DTYPE)
+    policy_logits = np.array(policy_logits_tf, dtype=DTYPE)
+    return values, policy_logits
+
 
 @cython.boundscheck(False)
 @cython.wraparound(False)

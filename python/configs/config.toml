@@ -53,7 +53,7 @@ buffer_size = 10000
 root_exploration_noise = true
 num_mcts_sims = 800
 num_mcts_sampling_moves = 30
-moves_softmax_temp = 1.2
+moves_softmax_temp = 1.35
 # Terminate selfplay games and evaluate it based on tablebase
 tablebase_stopage = true
 # Resignation during selfplay if Q-value of the best move is below this threshold (0.0 to disable)
