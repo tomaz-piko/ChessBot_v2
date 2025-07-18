@@ -1,0 +1,234 @@
+{
+  "user": {
+    "name": "PikoZero"
+  },
+  "perf": {
+    "glicko": {
+      "rating": 2133.16,
+      "deviation": 58.23
+    },
+    "nb": 368,
+    "progress": 4
+  },
+  "rank": null,
+  "percentile": 88,
+  "stat": {
+    "id": "pikozero/1",
+    "userId": {
+      "id": "pikozero",
+      "name": "PikoZero",
+      "title": "BOT"
+    },
+    "perfType": {
+      "key": "bullet",
+      "name": "Hitri šah"
+    },
+    "highest": {
+      "int": 2144,
+      "at": "2025-06-10T17:14:49.822Z",
+      "gameId": "KDQ2od9S"
+    },
+    "lowest": {
+      "int": 1582,
+      "at": "2025-05-25T08:18:55.142Z",
+      "gameId": "RkIyGjCp"
+    },
+    "bestWins": {
+      "results": [
+        {
+          "opRating": 2278,
+          "opId": {
+            "id": "halcyonbot",
+            "name": "halcyonbot",
+            "title": "BOT"
+          },
+          "at": "2025-06-10T16:39:18.515Z",
+          "gameId": "gWy7RbK4"
+        },
+        {
+          "opRating": 2278,
+          "opId": {
+            "id": "simpleeval",
+            "name": "simpleEval",
+            "title": "BOT"
+          },
+          "at": "2025-05-29T06:17:23.029Z",
+          "gameId": "n0yv5Rsh"
+        },
+        {
+          "opRating": 2268,
+          "opId": {
+            "id": "foxchessbot",
+            "name": "FoxChessBot",
+            "title": "BOT"
+          },
+          "at": "2025-05-29T18:22:49.351Z",
+          "gameId": "Leb7RJzJ"
+        },
+        {
+          "opRating": 2255,
+          "opId": {
+            "id": "byte-knight",
+            "name": "byte-knight",
+            "title": "BOT"
+          },
+          "at": "2025-05-29T13:21:57.842Z",
+          "gameId": "9DDDhdKC"
+        },
+        {
+          "opRating": 2213,
+          "opId": {
+            "id": "simpleeval",
+            "name": "simpleEval",
+            "title": "BOT"
+          },
+          "at": "2025-06-09T11:55:49.227Z",
+          "gameId": "dL8Rfy3A"
+        }
+      ]
+    },
+    "worstLosses": {
+      "results": [
+        {
+          "opRating": 1369,
+          "opId": {
+            "id": "crabstick-engine",
+            "name": "crabstick-engine",
+            "title": "BOT"
+          },
+          "at": "2025-05-24T18:45:54.105Z",
+          "gameId": "7emrJrlP"
+        },
+        {
+          "opRating": 1479,
+          "opId": {
+            "id": "monchester",
+            "name": "monchester",
+            "title": "BOT"
+          },
+          "at": "2025-05-26T08:53:00.496Z",
+          "gameId": "4RCDbhtw"
+        },
+        {
+          "opRating": 1527,
+          "opId": {
+            "id": "davidsguterbot",
+            "name": "DavidsGuterBot",
+            "title": "BOT"
+          },
+          "at": "2025-05-25T08:18:55.142Z",
+          "gameId": "RkIyGjCp"
+        },
+        {
+          "opRating": 1580,
+          "opId": {
+            "id": "maia9",
+            "name": "maia9",
+            "title": "BOT"
+          },
+          "at": "2025-05-26T08:45:40.543Z",
+          "gameId": "NhsrlWVS"
+        },
+        {
+          "opRating": 1704,
+          "opId": {
+            "id": "turkjs",
+            "name": "turkjs",
+            "title": "BOT"
+          },
+          "at": "2025-05-24T13:48:52.127Z",
+          "gameId": "5tMST3i5"
+        }
+      ]
+    },
+    "count": {
+      "all": 443,
+      "rated": 396,
+      "win": 266,
+      "loss": 133,
+      "draw": 44,
+      "tour": 0,
+      "berserk": 0,
+      "opAvg": 1935.32,
+      "seconds": 63519,
+      "disconnects": 0
+    },
+    "resultStreak": {
+      "win": {
+        "cur": {
+          "v": 1,
+          "from": {
+            "at": "2025-06-10T19:18:54.72Z",
+            "gameId": "oduvsWck"
+          },
+          "to": {
+            "at": "2025-06-10T19:21:11.293Z",
+            "gameId": "oduvsWck"
+          }
+        },
+        "max": {
+          "v": 9,
+          "from": {
+            "at": "2025-06-09T13:01:26.755Z",
+            "gameId": "4M3M3yE5"
+          },
+          "to": {
+            "at": "2025-06-09T13:29:01.614Z",
+            "gameId": "Dd8kmlv1"
+          }
+        }
+      },
+      "loss": {
+        "cur": {
+          "v": 0
+        },
+        "max": {
+          "v": 7,
+          "from": {
+            "at": "2025-05-29T15:25:54.364Z",
+            "gameId": "j5UCRKo2"
+          },
+          "to": {
+            "at": "2025-05-29T16:12:56.798Z",
+            "gameId": "ia1hev5U"
+          }
+        }
+      }
+    },
+    "playStreak": {
+      "nb": {
+        "cur": {
+          "v": 0
+        },
+        "max": {
+          "v": 110,
+          "from": {
+            "at": "2025-06-09T11:52:54.376Z",
+            "gameId": "dL8Rfy3A"
+          },
+          "to": {
+            "at": "2025-06-09T22:24:48.48Z",
+            "gameId": "JLjruxkc"
+          }
+        }
+      },
+      "time": {
+        "cur": {
+          "v": 0
+        },
+        "max": {
+          "v": 15861,
+          "from": {
+            "at": "2025-06-09T11:52:54.376Z",
+            "gameId": "dL8Rfy3A"
+          },
+          "to": {
+            "at": "2025-06-09T22:24:48.48Z",
+            "gameId": "JLjruxkc"
+          }
+        }
+      },
+      "lastDate": "2025-06-10T19:21:11.293Z"
+    }
+  }
+}
