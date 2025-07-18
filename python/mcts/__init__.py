@@ -54,31 +54,67 @@ def get_pv(root: Node, multi_pv: int = 1, max_depth: int = 5):
 
     return pvs
 
-def debug_search(board, root: Node, multi_pv: int = 1, max_depth: int = 5):
+def debug_search(board, root: Node, multi_pv: int = 1, max_depth: int = 5, limit: tuple = None):
     assert root, "No root node provided."
     sorted_children = sorted(root.children.values(), key=lambda x: x.N, reverse=True)
-    best_child = list(sorted_children)[0]
     print(board)
     time = root.debug_info["elapsed_time"] if "elapsed_time" in root.debug_info else 0.0
     print(f"Elapsed time: {time:.2f}s")
     print(f"Total visits: {root.N}")
-    pvs = get_pv(root, multi_pv, max_depth)
-    print("-" * 110)
-    print("PV:")
-    for i, pv in enumerate(pvs):
-        print(f"{i+1}. {pv}")
-    print("-" * 110)
-    print("%-16s %-10s %-14s %-16s %-16s %-18s %-8s" %("Move", "Visits", "Policy", "Avg. value", "UCB", "Q+U", "Raw NN Value"))
-    print("-" * 110)
-    for child in sorted_children:
-        move = child.debug_info["move_uci"]
-        action = child.debug_info["move_num"]
-        visits = child.N
-        policy = as_percentage(child.P)
-        Q = child.W / child.N if child.N > 0 else 0.0
-        avg_value = as_str(Q)
-        ucb = child.debug_info["ucb"]
-        q_plus_ucb = as_str(Q + ucb)
-        U = as_str(ucb)
-        raw_nn_value = as_str(child.debug_info["init_value"]) if "init_value" in child.debug_info else "N/A"
-        print("%-5s (%-6s)   %-10s %-14s %-16s %-16s %-18s %-13s" %(move, action, f"N: {visits}", f"(P: {policy})", f"(Q: {avg_value})", f"(U: {U})", f"(Q+U: {q_plus_ucb})", f"(V: {raw_nn_value})"))
+
+    if multi_pv > 0:
+        pvs = get_pv(root, multi_pv, max_depth)
+        print("-" * 85)
+        print("PV:")
+        for i, pv in enumerate(pvs):
+            print(f"{i+1}. {pv}")
+
+    print("-" * 85)
+    print("%-5s | %-6s | %-10s | %-12s | %-12s | %-12s | %-12s" %("Move", "N", "  P. Norm", " V [0, 1]", " Q", " U", " Q+U"))
+    print("-" * 85)
+    if limit and len(sorted_children) < limit[0] + limit[1]:
+        limit = None
+
+    if limit:
+        top_children = sorted_children[:limit[0]]
+        bottom_children = sorted_children[-limit[1]:]
+        for child in top_children:
+            move = child.debug_info["move_uci"]
+            visits = child.N
+            policy = as_percentage(child.P)
+            Q = child.W / child.N if child.N > 0 else 0.0
+            avg_value = as_str(Q)
+            ucb = child.debug_info["ucb"]
+            q_plus_ucb = as_str(Q + ucb)
+            U = as_str(ucb)
+            raw_nn_value = as_str(child.debug_info["init_value"]) if "init_value" in child.debug_info else "N/A"
+            print("%-5s | %-6d | %-10s | %-12s | %-12s | %-12s | %-12s" %(move, visits, policy, raw_nn_value, avg_value, U, q_plus_ucb))
+
+        print("%-5s | %-6s | %-10s | %-12s | %-12s | %-12s | %-12s" %('•', '•', '  •', ' •', ' •', ' •', ' •'))
+        print("%-5s | %-6s | %-10s | %-12s | %-12s | %-12s | %-12s" %('•', '•', '  •', ' •', ' •', ' •', ' •'))
+        print("%-5s | %-6s | %-10s | %-12s | %-12s | %-12s | %-12s" %('•', '•', '  •', ' •', ' •', ' •', ' •'))
+
+        for child in bottom_children:
+            move = child.debug_info["move_uci"]
+            visits = child.N
+            policy = as_percentage(child.P)
+            Q = child.W / child.N if child.N > 0 else 0.0
+            avg_value = as_str(Q)
+            ucb = child.debug_info["ucb"]
+            q_plus_ucb = as_str(Q + ucb)
+            U = as_str(ucb)
+            raw_nn_value = as_str(child.debug_info["init_value"]) if "init_value" in child.debug_info else "N/A"
+            print("%-5s | %-6d | %-10s | %-12s | %-12s | %-12s | %-12s" %(move, visits, policy, raw_nn_value, avg_value, U, q_plus_ucb))
+
+    else:
+        for child in sorted_children:
+            move = child.debug_info["move_uci"]
+            visits = child.N
+            policy = as_percentage(child.P)
+            Q = child.W / child.N if child.N > 0 else 0.0
+            avg_value = as_str(Q)
+            ucb = child.debug_info["ucb"]
+            q_plus_ucb = as_str(Q + ucb)
+            U = as_str(ucb)
+            raw_nn_value = as_str(child.debug_info["init_value"]) if "init_value" in child.debug_info else "N/A"
+            print("%-5s | %-6d | %-10s | %-12s | %-12s | %-12s | %-12s" %(move, visits, policy, raw_nn_value, avg_value, U, q_plus_ucb))
